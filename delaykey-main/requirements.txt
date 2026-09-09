@@ -1,0 +1,13 @@
+# Runtime dependencies for the delaykey model, experiments and figures.
+#
+# numpy alone is enough to run the model, the experiments and the tests;
+# matplotlib is needed only by figures/. There is no GPU dependency, no
+# PyTorch, and nothing that compiles.
+#
+# The floors below are conservative rather than tested: the code uses only
+# long-stable interfaces (numpy's Generator API, matplotlib's pyplot and Agg
+# backend). The versions this snapshot was verified against are recorded in
+# PROVENANCE.txt.
+
+numpy>=1.22
+matplotlib>=3.6
