@@ -84,6 +84,9 @@ def load(path: Path) -> list[dict]:
                 "seed": int(raw["seed"]),
                 "n_reference": int(raw["n_reference"]),
                 "retention": float(raw["retention"]),
+                # Runs from before the time step became a parameter carry no
+                # column, and ran at 1 step per ms.
+                "steps_per_ms": int(raw.get("steps_per_ms") or 1),
             })
     return rows
 
@@ -194,6 +197,7 @@ def half_loss(mags, per_seed, rng, n_boot: int = 2000):
 
 
 def main(argv=None) -> int:
+    global MIN_DETECTOR_TOTAL
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--csv", type=Path,
                         default=Path("results/e6_precision.csv"))
@@ -214,7 +218,12 @@ def main(argv=None) -> int:
     parser.add_argument("--reference-dispersion", type=int, default=20,
                         help="the dispersion carried through to the caption "
                              "and drawn for the stricter threshold in a-b")
+    parser.add_argument("--min-detectors", type=int, default=MIN_DETECTOR_TOTAL,
+                        help="the detector floor below which a cell is not "
+                             "drawn; run_all.sh --quick lowers it, because the "
+                             "smoke-test grid never reaches the default")
     args = parser.parse_args(argv)
+    MIN_DETECTOR_TOTAL = args.min_detectors
 
     rows = load(args.csv)
     strict = load(args.csv_strict) if args.csv_strict.exists() else []
@@ -316,9 +325,11 @@ def main(argv=None) -> int:
     # rather than leaving the reader to decode "k < 1" from the caption.
     ax_b.annotate("unperturbed", xy=(1.0, 1.0), xytext=(1.0, 1.075),
                   color=PALETTE["black"], fontsize=PT_ANNOT, ha="center")
-    ax_b.annotate("faster conduction", xy=(0.855, 0.045),
+    # In the top corners: the narrowest population and the strict gate both
+    # fall to the floor under speeding, so the bottom left is no longer empty.
+    ax_b.annotate("faster\nconduction", xy=(0.873, 0.86),
                   color=PALETTE["black"], fontsize=PT_ANNOT, ha="center", alpha=0.75)
-    ax_b.annotate("slower", xy=(1.145, 0.045),
+    ax_b.annotate("slower\nconduction", xy=(1.14, 0.86),
                   color=PALETTE["black"], fontsize=PT_ANNOT, ha="center", alpha=0.75)
 
     # -- c, the budget ------------------------------------------------------
@@ -367,8 +378,12 @@ def main(argv=None) -> int:
                 # Labelled off the second point rather than the last: the two
                 # series converge to the right, where two labels a millimetre
                 # apart would be read as one.
+                # Above the series and to the right of its peak, where neither
+                # the open markers of the other intervals nor the hyperbola run.
                 i = min(1, len(main_xs) - 1)
-                direct_label(ax_c, main_xs[i], main_pts[i] + dy,
+                j = min(2, len(main_xs) - 1)
+                x_lab = main_xs[j] if dy > 0 else main_xs[i]
+                direct_label(ax_c, x_lab, main_pts[i] + dy,
                              f"$\\theta = {theta:g}$", colour, dx=1.5)
             else:
                 # The other two intervals, drawn as bare points: the budget is a
@@ -403,6 +418,30 @@ def main(argv=None) -> int:
                          if r["dispersion"] == ref_disp
                          and r["interval"] == MAIN_INTERVAL]))
 
+    # The time step, read from the data rather than assumed: the caption has
+    # to say it, because on a 1 ms step a perturbation under half a step rounds
+    # away and the small-perturbation retention is inflated.
+    steps = sorted({r["steps_per_ms"] for r in rows + strict})
+    step_ms = ", ".join(f"{1 / k:g}" for k in steps)
+
+    # The slowing/speeding asymmetry is confined to dispersions near the
+    # interval, so the caption reports it there and says where it ends, rather
+    # than quoting one dispersion as if it held for all.
+    def scale_gap(disp, mag=0.05):
+        keyed = defaultdict(list)
+        for r in rows:
+            if (r["perturbation"] == "scale" and r["dispersion"] == disp
+                    and r["interval"] == MAIN_INTERVAL):
+                keyed[round(r["magnitude"], 4)].append(r["retention"])
+        slow, fast = keyed.get(round(1 + mag, 4)), keyed.get(round(1 - mag, 4))
+        return None if not slow or not fast else float(np.mean(slow) - np.mean(fast))
+
+    wide = [d for d in dispersions if d >= MAIN_INTERVAL + 15]
+    wide_gaps = [g for g in (scale_gap(d) for d in wide) if g is not None]
+    wide_txt = (f"from $\\Delta = {wide[0]}$~ms on, the two differ by at most "
+                f"{100 * max(abs(g) for g in wide_gaps):.0f} percentage points"
+                if wide_gaps else "")
+
     def cite(pert, mag, theta=None, disp=None):
         e = cited[(pert, disp or ref_disp, round(theta or theta_main, 2), mag)]
         return f"{100 * e.mean:.0f}\\% [{100 * e.lo:.0f}, {100 * e.hi:.0f}]"
@@ -418,10 +457,10 @@ def main(argv=None) -> int:
         f"needs.}} Sequence detectors were identified with exact delays "
         f"({n_ref} per population on average at $\\Delta = {ref_disp}$~ms), then "
         f"the delays were perturbed and the fraction still responding "
-        f"conjunctively was measured. Perturbed delays are re-rounded to whole "
-        f"time steps, the simulation being discrete; at $\\Delta = {ref_disp}$~ms "
-        f"a perturbation of a few per cent is therefore sub-step for most "
-        f"delays, and the discretisation carries part of the effect. Shading "
+        f"conjunctively was measured. The sweep runs on a {step_ms}~ms step, "
+        f"with perturbed delays re-rounded to it, so that perturbations far "
+        f"smaller than a millisecond are resolved rather than rounded away "
+        f"(\\textbf{{S2 Text}}). Shading "
         f"and bars are 95\\% bootstrap confidence intervals over {n_seeds} "
         f"independent seeds. \\textbf{{{pa}}}, Independent per-connection "
         f"jitter, each delay scaled by its own draw of "
@@ -442,10 +481,10 @@ def main(argv=None) -> int:
         f"5\\% slowing ($k = 1.05$) retains {cite('scale', 1.05)} against "
         f"{cite('scale', 0.95)} for a 5\\% speeding; a 20\\% slowing retains "
         f"{cite('scale', 1.2)} against {cite('scale', 0.8)} for a 20\\% "
-        f"speeding. Retention is thus asymmetric about $k = 1$ and consistently "
-        f"worse for shortened delays, because shortening compresses the "
-        f"differences between delays towards the rounding step and destroys the "
-        f"compensation, whereas lengthening dilates them. Retention falls "
+        f"speeding. The asymmetry is confined to dispersions near the "
+        f"interval, where the detectors that exist mostly fall short of "
+        f"compensating it, so that dilating every delay helps them and "
+        f"compressing hurts; {wide_txt} (\\textbf{{S2 Text}}). Retention falls "
         f"smoothly rather than collapsing, and does not reach zero even under "
         f"the largest perturbations applied, because detectors differ in how "
         f"tightly their delays are matched; the loosely matched ones tolerate "

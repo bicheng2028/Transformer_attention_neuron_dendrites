@@ -4,13 +4,29 @@ Laid out to the Nature artwork specification (see :mod:`delaykey.plotting`):
 165.1 mm PLOS width, 7 pt maximum text, 8 pt bold lower-case panel letters, no
 panel titles, and curves labelled in place rather than through legend boxes.
 
+2026-09 revision. The previous version led with the ROC AUC of the tuned
+subpopulation, and that panel could not carry the claim made from it: the tuned
+subpopulation is selected as the neurons that fire for the clean target and not
+the clean distractor, so its AUC is 1.0 at sigma = 0 by construction, and its
+shallow decline under jitter reports only that jitter degrades both stimuli
+symmetrically enough to preserve the rank order between them. Read as
+robustness, it asserted a tolerance to perturbation that a population of
+coincidence detectors cannot have. The AUC now lives in the CSV as a secondary
+summary and is off the figure; the panels plot the two activity channels
+directly, which the selection rule does not pin.
+
 Panels:
 
-a  Discriminability (ROC AUC, threshold-free) against temporal jitter, hard
-   versus soft gating, with 95% bootstrap confidence intervals.
-b  Signed AUC for the same runs, showing that the soft readout carries the
-   opposite polarity -- it responds more to the distractor than to the target.
-c  Activation cost, spikes per trial per tuned neuron, on a log axis.
+a  The three activity channels under hard gating: spikes per neuron per trial
+   in the tuned pool on the target, in the tuned pool on the distractor, and in
+   the non-tuned pool. This is the panel that answers how far jitter disturbs
+   the population code -- the signal channel falls by more than half while the
+   crosstalk floor stays flat, and the tuned pool's answer to the wrong order
+   rises to meet that floor.
+b  Population selectivity index, (tuned - non-tuned) / (tuned + non-tuned) on
+   the target, hard versus soft gating. Hard gating starts far above soft and
+   loses roughly half of its margin; soft gating never has one to lose.
+c  Spikes per tuned neuron per trial, hard versus soft gating, on a log axis.
 
 Usage::
 
@@ -29,16 +45,28 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from delaykey.plotting import (PALETTE, PT_ANNOT, apply_style, direct_label,
-                               figure_size, label_panels, save_figure)
+from delaykey.plotting import (PALETTE, apply_style, direct_label,
+                               figure_size, label_panels, save_figure, tint)
 from delaykey.stats import bootstrap_mean
 
 import matplotlib.pyplot as plt  # noqa: E402
 
+# Colour roles, held consistent with the neighbouring figures: blue is the
+# headline condition, vermillion the contrasting one, grey the soft-gated
+# control wherever it appears. Within panel a the blue family carries the
+# target stimulus and saturation distinguishes the two pools, which keeps grey
+# reserved for the soft model in panels b and c.
+C_TUNED = PALETTE["blue"]
+C_NONTUNED = tint(PALETTE["blue"], 0.45)
+C_WRONG = PALETTE["vermillion"]
 GATING_STYLE = {
     "hard": ("Hard gate", PALETTE["blue"]),
     "soft": ("Soft gate", PALETTE["grey"]),
 }
+
+CHANNELS = ("tuned_activation_target", "tuned_activation_distractor",
+            "nontuned_activation_target", "nontuned_activation_distractor",
+            "snr_target", "snr_distractor", "si_target", "si_distractor")
 
 
 def load(path: Path) -> list[dict]:
@@ -46,18 +74,19 @@ def load(path: Path) -> list[dict]:
     rows = []
     with path.open() as handle:
         for raw in csv.DictReader(handle):
-            rows.append({
+            row = {
                 "gating": raw["gating"],
                 "sigma": float(raw["sigma"]),
                 "dispersion": int(raw["dispersion"]),
                 "theta": float(raw["theta"]),
                 "seed": int(raw["seed"]),
                 "n_tuned": int(raw["n_tuned"]),
+                "n_nontuned": int(raw["n_nontuned"]),
                 "auc": float(raw["auc"]),
                 "auc_unsigned": float(raw["auc_unsigned"]),
-                "activation_target": float(raw["activation_target"]),
-                "activation_distractor": float(raw["activation_distractor"]),
-            })
+            }
+            row.update({k: float(raw[k]) for k in CHANNELS})
+            rows.append(row)
     return rows
 
 
@@ -101,6 +130,7 @@ def main(argv=None) -> int:
     dispersion = rows[0]["dispersion"]
     theta = rows[0]["theta"]
     n_tuned = int(np.mean([r["n_tuned"] for r in rows]))
+    n_pop = n_tuned + int(np.mean([r["n_nontuned"] for r in rows]))
 
     apply_style()
     fig, axes = plt.subplots(
@@ -118,76 +148,64 @@ def main(argv=None) -> int:
                         right=(width_mm - trim_mm) / width_mm,
                         bottom=0.22, top=0.895)  # headroom for 10 pt panel letters
 
-    summary = {}
-    for gating, (name, colour) in GATING_STYLE.items():
-        subset = [r for r in rows if r["gating"] == gating]
-
-        # a -- threshold-free discriminability, polarity removed.
-        grouped = group(subset, ("sigma",), "auc_unsigned")
+    def curve(ax, subset, key, colour, **kwargs):
+        grouped = group(subset, ("sigma",), key)
         est = [bootstrap_mean(grouped[(s,)], rng) for s in sigmas]
-        band(ax_a, sigmas, est, colour)
-        summary[(gating, "auc")] = est
+        band(ax, sigmas, est, colour, **kwargs)
+        return est
 
-        # b -- signed AUC, which is where the two models part company.
-        grouped = group(subset, ("sigma",), "auc")
-        est_signed = [bootstrap_mean(grouped[(s,)], rng) for s in sigmas]
-        band(ax_b, sigmas, est_signed, colour)
-        summary[(gating, "signed")] = est_signed
+    hard = [r for r in rows if r["gating"] == "hard"]
+    soft = [r for r in rows if r["gating"] == "soft"]
 
-        # c -- activation cost in comparable units.
-        grouped = group(subset, ("sigma",), "activation_target")
-        est_act = [bootstrap_mean(grouped[(s,)], rng) for s in sigmas]
-        band(ax_c, sigmas, est_act, colour)
-        summary[(gating, "act")] = est_act
+    # a -- the three activity channels under hard gating, in spikes per neuron
+    # per trial. Nothing here is fixed by the selection rule: selection chooses
+    # which neurons are counted, not how hard they fire.
+    a_tuned = curve(ax_a, hard, "tuned_activation_target", C_TUNED)
+    a_wrong = curve(ax_a, hard, "tuned_activation_distractor", C_WRONG)
+    a_cross = curve(ax_a, hard, "nontuned_activation_target", C_NONTUNED)
 
-    hard_c, soft_c = PALETTE["blue"], PALETTE["grey"]
-    direct_label(ax_a, sigmas[-1], summary[("hard", "auc")][-1].mean - 0.0055,
-                 "Hard gate", hard_c, dx=-2.6)
-    direct_label(ax_a, sigmas[-1], summary[("soft", "auc")][-1].mean + 0.0022,
-                 "Soft gate", soft_c, dx=-2.6)
-    direct_label(ax_b, sigmas[2], summary[("hard", "signed")][2].mean - 0.075,
-                 "Hard gate", hard_c, dx=-0.6)
-    direct_label(ax_b, sigmas[2], summary[("soft", "signed")][2].mean + 0.075,
-                 "Soft gate", soft_c, dx=-0.6)
-    # Anchored mid-panel: at sigmas[-1] the soft label ran off the figure's
-    # right edge and the hard label fell below the axis floor, leaving this
-    # panel with no legible key at all.
-    direct_label(ax_c, sigmas[3], summary[("soft", "act")][3].mean * 0.70,
-                 "Soft gate", soft_c, dx=2.0)
-    direct_label(ax_c, sigmas[3], summary[("hard", "act")][3].mean * 1.45,
-                 "Hard gate", hard_c, dx=2.0)
+    # b -- population selectivity on the target, where the two models part
+    # company: the quantity the old AUC panel was taken to measure, measured.
+    b_hard = curve(ax_b, hard, "si_target", GATING_STYLE["hard"][1])
+    b_soft = curve(ax_b, soft, "si_target", GATING_STYLE["soft"][1])
+
+    # c -- spike counts in comparable units.
+    c_hard = curve(ax_c, hard, "tuned_activation_target",
+                   GATING_STYLE["hard"][1])
+    c_soft = curve(ax_c, soft, "tuned_activation_target",
+                   GATING_STYLE["soft"][1])
+
+    direct_label(ax_a, sigmas[-1], a_tuned[-1].mean + 0.075, "tuned",
+                 C_TUNED, dx=-1.05, ha="right")
+    direct_label(ax_a, sigmas[-1], a_wrong[-1].mean + 0.068, "wrong order",
+                 C_WRONG, dx=-1.05, ha="right")
+    direct_label(ax_a, sigmas[-1], a_cross[-1].mean - 0.115, "non-tuned",
+                 C_NONTUNED, dx=-1.05, ha="right")
+
+    direct_label(ax_b, sigmas[-1], b_hard[-1].mean + 0.045, "Hard gate",
+                 GATING_STYLE["hard"][1], dx=-1.05, ha="right")
+    direct_label(ax_b, sigmas[-1], b_soft[-1].mean + 0.045, "Soft gate",
+                 GATING_STYLE["soft"][1], dx=-1.05, ha="right")
+
+    direct_label(ax_c, sigmas[-1], c_soft[-1].mean * 0.72, "Soft gate",
+                 GATING_STYLE["soft"][1], dx=-1.05, ha="right")
+    direct_label(ax_c, sigmas[-1], c_hard[-1].mean * 1.30, "Hard gate",
+                 GATING_STYLE["hard"][1], dx=-1.05, ha="right")
 
     ax_a.set_xlabel("Jitter $\\sigma$ (steps)")
-    ax_a.set_ylabel("ROC AUC (unsigned)")
-    # Both models sit near the ceiling, so the axis is zoomed to the top 5% of
-    # the range to make the hard-gate decline legible. Chance is 0.5, far below
-    # the bottom of this axis; the caption says so.
-    ax_a.set_ylim(0.972, 1.004)
-    ax_a.set_yticks([0.98, 0.99, 1.00])
+    ax_a.set_ylabel("Spikes per neuron per trial")
+    ax_a.set_ylim(0.0, max(e.hi for e in a_tuned) * 1.16)
 
     ax_b.set_xlabel("Jitter $\\sigma$ (steps)")
-    ax_b.set_ylabel("ROC AUC (signed)")
-    ax_b.set_ylim(-0.04, 1.04)
-    # Both series are flat -- 1.000 and 0.000 at every jitter level -- so the
-    # panel's content is which side of chance each one sits on, not its shape.
-    # Shading the sub-chance half says that directly; without it the panel is
-    # two horizontal lines separated by empty white.
-    ax_b.axhspan(-0.04, 0.5, color=PALETTE["grey"], alpha=0.10, linewidth=0,
-                 zorder=0)
-    ax_b.axhline(0.5, color=PALETTE["black"], linewidth=0.9, linestyle=(0, (3, 2)),
-                 zorder=1)
-    ax_b.annotate("chance", xy=(sigmas[-1], 0.5), xytext=(sigmas[-1], 0.545),
-                  color=PALETTE["black"], fontsize=PT_ANNOT, ha="right")
-    # One label for the shaded half, set in the empty middle of the band so it
-    # clears both the soft-gate trace at 0.0 and the chance rule at 0.5. The
-    # unshaded half needs no counterpart: "not inverted" is the default reading.
-    # Short enough to stay inside the panel at 8 pt; the caption carries
-    # the full reading. The long form overran into the next panel.
-    ax_b.annotate("inverted", xy=(sigmas[0] + 0.15, 0.24),
-                  color=PALETTE["black"], fontsize=PT_ANNOT, alpha=0.75)
+    ax_b.set_ylabel("Selectivity index")
+    # The axis floor is zero, which is exactly the value at which the tuned and
+    # non-tuned pools are equally active -- so the soft-gate trace sitting on
+    # the floor already reads as "no selectivity" without a rule to say so. A
+    # dashed line at zero only collided with that trace.
+    ax_b.set_ylim(0.0, max(e.hi for e in b_hard) * 1.20)
 
     ax_c.set_xlabel("Jitter $\\sigma$ (steps)")
-    ax_c.set_ylabel("Spikes per trial per neuron")
+    ax_c.set_ylabel("Spikes per neuron per trial")
     ax_c.set_yscale("log")
 
     pa, pb, pc = args.panel_letters
@@ -197,42 +215,62 @@ def main(argv=None) -> int:
     for path in written:
         print(f"  wrote {path}")
 
-    a_h0 = summary[("hard", "auc")][0]
-    a_hl = summary[("hard", "auc")][-1]
-    ratio_lo = (summary[("soft", "act")][0].mean
-                / summary[("hard", "act")][0].mean)
-    ratio_hi = (summary[("soft", "act")][-1].mean
-                / summary[("hard", "act")][-1].mean)
+    t0, t5 = a_tuned[0], a_tuned[-1]
+    x0, x5 = a_cross[0], a_cross[-1]
+    w5 = a_wrong[-1]
+    s0, s5 = b_hard[0], b_hard[-1]
+    f0, f5 = b_soft[0], b_soft[-1]
+    drop = 100.0 * (1.0 - t5.mean / t0.mean)
+    # The jitter level at which the tuned pool's answer to the wrong order first
+    # reaches the crosstalk floor: the point at which the tuned pool stops
+    # being silent for the reversed order, though it still prefers the target.
+    # Read off the curves rather than asserted, so the sentence cannot drift
+    # from the data.
+    crossing = next((s for s, w, x in zip(sigmas, a_wrong, a_cross)
+                     if w.mean >= x.mean), None)
+    ratio_lo = c_soft[0].mean / c_hard[0].mean
+    ratio_hi = c_soft[-1].mean / c_hard[-1].mean
     caption = (
-        f"\\textbf{{Hard and soft gating compared on the same task, the same "
-        f"delays, and a threshold-free metric.}} A target-versus-distractor "
-        f"discrimination, A$\\rightarrow$B against B$\\rightarrow$A, over "
-        f"{n_tuned} tuned neurons drawn from a population whose delays are "
-        f"uniform on $[0, {dispersion}]$~ms at $\\theta = {theta:g}$. Both "
-        f"models receive identical delays, connectivity and stimuli and differ "
-        f"only in whether the calcium threshold is applied, so the contrast "
-        f"isolates gating rather than delay tuning. Shading is the 95\\% "
-        f"bootstrap confidence interval over {n_seeds} independent seeds. "
-        f"\\textbf{{{pa}}}, Discriminability as area under the ROC with polarity "
-        f"removed; note the axis is zoomed to the top of the range, chance "
-        f"being 0.5 and far below it. Both models separate the two orders "
-        f"essentially perfectly at low jitter; hard gating declines only to "
-        f"{a_hl.mean:.3f} [{a_hl.lo:.3f}, {a_hl.hi:.3f}] at "
-        f"$\\sigma = {sigmas[-1]:g}$ from {a_h0.mean:.3f} when clean, so a "
-        f"low detection rate at that jitter would be a property of the fixed "
-        f"operating point at which it is measured and not a loss of "
-        f"information. \\textbf{{{pb}}}, The same runs, showing the signed AUC. "
-        f"Hard gating scores the target above the distractor (signed AUC "
-        f"$\\approx$ 1.000). The soft-gated control, when read out by total "
-        f"spike count, scores the distractor above the target (signed AUC "
-        f"$\\approx$ 0.000), reflecting its lack of a refractory period rather "
-        f"than a failure of selectivity. "
-        f"\\textbf{{{pc}}}, Activation cost in comparable units, spikes emitted "
-        f"per trial per tuned neuron, on a logarithmic axis. Hard gating spends "
-        f"{ratio_lo:.0f}-fold less when clean and {ratio_hi:.0f}-fold less at "
-        f"$\\sigma = {sigmas[-1]:g}$: the gap widens with jitter, because leaky "
-        f"integration accumulates every displaced spike while the threshold "
-        f"discards it."
+        f"\\textbf{{Hard gating buys population selectivity with a fraction of "
+        f"the soft rule's spikes, and loses most of its signal to the first "
+        f"millisecond of jitter.}} A target-versus-distractor discrimination, "
+        f"A$\\rightarrow$B against B$\\rightarrow$A, over a population of "
+        f"{n_pop} neurons whose delays are uniform on $[0, {dispersion}]$~ms "
+        f"at $\\theta = {theta:g}$. The population is partitioned once, on the "
+        f"clean stimuli, into the {n_tuned} \\emph{{tuned}} neurons that fire "
+        f"for the target and not the distractor and the non-tuned remainder; "
+        f"the partition is then held fixed at every jitter level, so it cannot "
+        f"track the perturbation. Both models receive identical delays, "
+        f"connectivity and stimuli and differ only in whether the calcium "
+        f"threshold is applied, so the contrast isolates gating rather than "
+        f"delay tuning. Shading is the 95\\% bootstrap confidence interval "
+        f"over {n_seeds} independent seeds. "
+        f"\\textbf{{{pa}}}, The three activity channels under hard gating. The "
+        f"signal channel -- the tuned pool's response to the target -- falls "
+        f"{drop:.0f}\\% from {t0.mean:.2f} [{t0.lo:.2f}, {t0.hi:.2f}] spikes "
+        f"per neuron per trial when clean to {t5.mean:.2f} "
+        f"[{t5.lo:.2f}, {t5.hi:.2f}] at $\\sigma = {sigmas[-1]:g}$, while the "
+        f"crosstalk floor is flat at {x0.mean:.2f} and {x5.mean:.2f}: the code "
+        f"degrades by losing signal, not by recruiting noise. The tuned pool's "
+        f"response to the reversed order rises from silence to {w5.mean:.2f}, "
+        f"reaching the non-tuned floor by $\\sigma = {crossing:g}$: beyond "
+        f"that jitter the tuned pool is no longer silent for the reversed "
+        f"order, though it still prefers the target, {t5.mean:.2f} against "
+        f"{w5.mean:.2f} at $\\sigma = {sigmas[-1]:g}$. "
+        f"\\textbf{{{pb}}}, Population selectivity index, (tuned $-$ "
+        f"non-tuned) / (tuned $+$ non-tuned) on the target; zero is the value "
+        f"at which the two pools are equally active. Hard gating falls from "
+        f"{s0.mean:.3f} [{s0.lo:.3f}, {s0.hi:.3f}] to {s5.mean:.3f} "
+        f"[{s5.lo:.3f}, {s5.hi:.3f}], roughly half its clean margin. The "
+        f"soft-gated control never rises above {max(f0.mean, f5.mean):.3f}: "
+        f"sharing the delays is not enough, and without the threshold the "
+        f"population has essentially no selectivity to lose. "
+        f"\\textbf{{{pc}}}, Spikes per tuned neuron per trial, on a "
+        f"logarithmic axis. The tuned pool emits {ratio_lo:.0f}-fold fewer "
+        f"spikes under hard gating when clean and {ratio_hi:.0f}-fold fewer at "
+        f"$\\sigma = {sigmas[-1]:g}$, the gap widening both because the "
+        f"threshold discards the displaced spikes and because the hard-gated "
+        f"response itself collapses."
     )
     caption_path = Path(args.out).with_suffix(".caption.tex")
     caption_path.write_text(caption + "\n")

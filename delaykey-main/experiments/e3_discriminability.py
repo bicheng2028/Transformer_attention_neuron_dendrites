@@ -3,6 +3,85 @@
 This script is manuscript **Experiment 3**; see the numbering table in
 ``delaykey/README.md``.
 
+-------------------------------------------------------------------------------
+WHAT THIS SCRIPT MEASURES (2026-09 revision)
+-------------------------------------------------------------------------------
+
+The previous version reported the AUC of the *tuned* subpopulation as its
+headline result, and that number cannot bear the weight put on it. The tuned
+subpopulation is selected, by construction, as the neurons that fire for the
+clean target and not for the clean distractor. Its AUC at sigma = 0 is therefore
+1.0 by definition of the selection, not by measurement, and the shallow decline
+of that AUC under jitter says only that jitter degrades the target and the
+distractor responses symmetrically, leaving the rank order between them mostly
+intact. A rank order that survives is not a population code that survives. Read
+as robustness, the old result claimed a tolerance to perturbation that no
+population of coincidence detectors could plausibly have.
+
+The revision replaces the headline with four direct quantities, none of which
+is fixed by the selection rule.
+
+Definitions
+-----------
+The population is partitioned once, on the *clean* stimulus, into:
+
+    tuned    := neurons that fire for the clean target and not for the clean
+                distractor. Selected once per seed under hard gating
+                (``--tuned-by hard``) or independently per gating mode
+                (``--tuned-by own``), then held fixed across every jitter
+                level, so the partition cannot drift with sigma.
+    nontuned := every remaining neuron. Note that this pool is not "the silent
+                neurons": it holds cells that answer both orders and cells that
+                answer the distractor alone, as well as cells that were silent
+                when clean. Its activity is therefore crosstalk in the general
+                sense -- activity that carries no evidence for the target --
+                and it is well above zero even at sigma = 0.
+
+The four reported quantities, each a mean over trials:
+
+1. ``tuned_activation``
+       Spikes per tuned neuron per trial. The **signal channel**: how much
+       drive the target still delivers to the cells tuned for it.
+
+2. ``nontuned_activation``
+       Spikes per non-tuned neuron per trial. The **crosstalk channel**: how
+       much activity jitter pushes into cells that are not tuned for the
+       target.
+
+3. ``snr``
+       tuned_activation / (nontuned_activation + eps). Ratio of the two
+       channels; 1.0 when the population has stopped distinguishing them.
+
+4. ``si``
+       (tuned_activation - nontuned_activation)
+       / (tuned_activation + nontuned_activation + eps).
+       Population selectivity index, in [-1, 1]. 1 when all activity sits in
+       the tuned pool, 0 when the two pools are equally active, negative when
+       the non-tuned pool is the louder of the two.
+
+Each is reported for the target and for the distractor stimulus separately, so
+both the absolute level (how much activity survives jitter at all) and the
+contrast between the two orders are visible.
+
+Unlike the AUC, none of these is pinned by the selection rule. Selection fixes
+which neurons are counted, not how hard they fire, so ``tuned_activation`` at
+sigma = 0 is a measurement rather than a tautology, and ``nontuned_activation``
+is free to rise with jitter without any compensating rise in the signal pool.
+
+The AUC columns are retained as a secondary, threshold-free summary of the
+signal-minus-crosstalk contrast, but they are no longer the result.
+
+One cost note. Measuring the crosstalk channel means simulating the whole
+population, not just the tuned pool, so this script is now roughly ``n_neurons
+/ n_tuned`` times more expensive than the version that reported the AUC alone.
+At the headline setting that is minutes; the ``theta = 4.5`` arm in
+``run_all.sh`` runs 50,000 neurons and takes tens of minutes on a workstation.
+The old metric was cheap precisely because it ignored the other 49,900 neurons.
+
+-------------------------------------------------------------------------------
+ORIGINAL NOTES (kept)
+-------------------------------------------------------------------------------
+
 Manuscript Experiment 2 reports that soft gating holds 100% detection at every
 noise level while hard gating falls to 20% at sigma = 5. On the metric reported,
 the baseline wins, and the 33x/63x headline measures activation rather than
@@ -20,9 +99,6 @@ the same within-volley timing, differing only in order -- and sweeps the readout
 threshold to trace a full ROC. AUC is threshold-free and therefore comparable
 across models at matched false-positive rate.
 
-Activation is reported on its own axis as spikes emitted per trial, which is
-comparable between the two models in the same units.
-
 This experiment may not favour hard gating. A quantified
 selectivity-versus-activation trade-off is a publishable result either way, and
 is a more honest claim than the current framing.
@@ -32,13 +108,13 @@ rather than buried, so that the reported result can be checked against its
 alternatives instead of being taken on trust:
 
 ``--readout``
-    the decision variable. ``spikes`` (the default, and what the manuscript
-    reports) totals somatic spikes over the trial. ``peak`` totals the peak
-    somatic membrane potential instead. The signed AUC of the *soft* model is
-    sensitive to this choice, because with no threshold and no dendritic reset
-    a soft branch holds the soma at its refractory ceiling for as long as any
-    drive is present -- so a spike count measures how *long* drive lasted, and a
-    dispersed volley lasts longer than a coincident one.
+    the decision variable used for the secondary AUC. ``spikes`` (the default,
+    and what the manuscript reports) uses spikes per neuron. ``peak`` uses the
+    peak somatic membrane potential instead. The signed AUC of the *soft* model
+    is sensitive to this choice, because with no threshold and no dendritic
+    reset a soft branch holds the soma at its refractory ceiling for as long as
+    any drive is present -- so a spike count measures how *long* drive lasted,
+    and a dispersed volley lasts longer than a coincident one.
 ``--tuned-by``
     which model selects the tuned subpopulation. ``hard`` (the default) selects
     once under hard gating and scores both models on those neurons, so the two
@@ -77,10 +153,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from delaykey.core import NeuronParams, simulate_population  # noqa: E402
 from delaykey.stimuli import random_connectivity, two_event_stimulus  # noqa: E402
 
+# Guards the ratio and the selectivity index when the crosstalk pool is silent.
+EPS = 1e-9
+
 FIELDNAMES = [
     "gating", "readout", "tuned_by", "sigma", "dispersion", "theta", "seed",
-    "n_tuned", "auc", "auc_unsigned", "d_prime", "activation_target",
-    "activation_distractor",
+    "n_tuned", "n_nontuned",
+    # The four primary quantities; see the module docstring for definitions.
+    "tuned_activation_target", "tuned_activation_distractor",
+    "nontuned_activation_target", "nontuned_activation_distractor",
+    "snr_target", "snr_distractor",
+    "si_target", "si_distractor",
+    # Secondary threshold-free summary of the signal-minus-crosstalk contrast.
+    "auc", "auc_unsigned", "d_prime",
 ]
 
 
@@ -115,10 +200,18 @@ def d_prime_from_scores(target: np.ndarray, distractor: np.ndarray) -> float:
     """Standard sensitivity index, pooling the two standard deviations."""
     target = np.asarray(target, dtype=float)
     distractor = np.asarray(distractor, dtype=float)
+    if target.size < 2 or distractor.size < 2:
+        return float("nan")
     pooled = np.sqrt(0.5 * (target.var(ddof=1) + distractor.var(ddof=1)))
     if pooled == 0:
         return float("nan")
     return float((target.mean() - distractor.mean()) / pooled)
+
+
+def _pool_mean(values: np.ndarray) -> float:
+    """Mean over a pool, or NaN if the pool is empty."""
+    values = np.asarray(values, dtype=float)
+    return float(values.mean()) if values.size else float("nan")
 
 
 def run_cell(job: dict) -> list[dict]:
@@ -154,45 +247,91 @@ def run_cell(job: dict) -> list[dict]:
     # both models read out the same neurons and the comparison is not confounded
     # by selection. That choice is itself contestable -- it scores the soft model
     # on cells chosen by its competitor's criterion -- so ``--tuned-by own`` lets
-    # each model pick its own.
+    # each model pick its own. Either way the partition is computed on the clean
+    # stimulus alone and reused at every sigma, so it cannot track the jitter.
     tuned_shared = select("hard") if tuned_by == "hard" else None
 
-    def score(x, gating):
-        """The decision variable, summed over the tuned population."""
-        if readout == "peak":
-            _, peak = simulate_population(x, delays_g, weights_g, params,
-                                          gating=gating, return_peak=True)
-            return float(peak.sum())
-        return float(simulate_population(x, delays_g, weights_g, params,
-                                         gating=gating).sum())
+    # The two gating arms must see the *same* jitter realisations, or the
+    # contrast between them carries a resampling difference on top of the
+    # gating difference. One generator shared across the loop does not give
+    # that: the second arm consumes the draws that follow the first arm's. The
+    # supplement's Methods already describe the paired design ("the generator
+    # being re-seeded identically across the two gating rules"); snapshotting
+    # the state here and restoring it per arm is what makes the code do it.
+    # The first arm's draws are unchanged, so only the soft arm moves, and
+    # only by the resampling it should not have had.
+    trial_state = rng.bit_generator.state
 
     rows = []
     for gating in ("hard", "soft"):
+        rng.bit_generator.state = trial_state
         tuned = tuned_shared if tuned_shared is not None else select(gating)
         n_tuned = int(tuned.sum())
+        n_nontuned = int((~tuned).sum())
         if n_tuned == 0:
             continue
-        delays_g = delays[tuned]
-        weights_g = weights[tuned]
 
-        target_scores, distractor_scores = [], []
-        # Activation stays a spike count whatever the decision variable is: it is
-        # a cost in emitted spikes, and a peak potential is not that.
-        target_spikes = []
+        def response(x):
+            """Per-neuron spike count and peak potential for the whole population.
+
+            ``simulate_population`` returns one value per neuron, and neurons in
+            this model are independent -- no recurrence, no shared state -- so
+            simulating the full population once and splitting it by the tuned
+            mask gives exactly what simulating the two pools separately would,
+            at half the cost. Verified against the split simulation for both
+            gating modes.
+            """
+            spikes, peak = simulate_population(x, delays, weights, params,
+                                               gating=gating, return_peak=True)
+            return (np.asarray(spikes, dtype=float),
+                    np.asarray(peak, dtype=float))
+
+        tuned_target, tuned_distractor = [], []
+        nontuned_target, nontuned_distractor = [], []
+        readout_target, readout_distractor = [], []
+
         for _ in range(job["n_trials"]):
             noisy_target = stim.with_jitter(job["sigma"], rng)
             noisy_distractor = distractor_clean.with_jitter(job["sigma"], rng)
-            target_scores.append(score(noisy_target.both, gating))
-            distractor_scores.append(score(noisy_distractor.both, gating))
-            target_spikes.append(
-                float(simulate_population(noisy_target.both, delays_g,
-                                          weights_g, params,
-                                          gating=gating).sum())
-                if readout == "peak" else target_scores[-1])
 
-        target_scores = np.array(target_scores, dtype=float)
-        distractor_scores = np.array(distractor_scores, dtype=float)
-        auc = auc_from_scores(target_scores, distractor_scores)
+            sp_tgt, pk_tgt = response(noisy_target.both)
+            sp_dis, pk_dis = response(noisy_distractor.both)
+
+            # Activation is always a spike count, whatever the decision
+            # variable is: it is a cost in emitted spikes, and a peak potential
+            # is not that.
+            tuned_target.append(_pool_mean(sp_tgt[tuned]))
+            tuned_distractor.append(_pool_mean(sp_dis[tuned]))
+            nontuned_target.append(_pool_mean(sp_tgt[~tuned]))
+            nontuned_distractor.append(_pool_mean(sp_dis[~tuned]))
+
+            # Secondary signal-minus-crosstalk readout for the AUC. Both pools
+            # enter as per-neuron means rather than sums: the non-tuned pool
+            # outnumbers the tuned one by more than an order of magnitude, and
+            # a difference of sums would be a measure of the crosstalk channel
+            # with the signal channel as rounding error.
+            score_tgt, score_dis = (pk_tgt, pk_dis) if readout == "peak" else (sp_tgt, sp_dis)
+            readout_target.append(
+                _pool_mean(score_tgt[tuned]) - _pool_mean(score_tgt[~tuned]))
+            readout_distractor.append(
+                _pool_mean(score_dis[tuned]) - _pool_mean(score_dis[~tuned]))
+
+        tuned_target = float(np.mean(tuned_target))
+        tuned_distractor = float(np.mean(tuned_distractor))
+        nontuned_target = float(np.mean(nontuned_target))
+        nontuned_distractor = float(np.mean(nontuned_distractor))
+
+        snr_target = tuned_target / (nontuned_target + EPS)
+        snr_distractor = tuned_distractor / (nontuned_distractor + EPS)
+        si_target = ((tuned_target - nontuned_target)
+                     / (tuned_target + nontuned_target + EPS))
+        si_distractor = ((tuned_distractor - nontuned_distractor)
+                         / (tuned_distractor + nontuned_distractor + EPS))
+
+        readout_target = np.array(readout_target, dtype=float)
+        readout_distractor = np.array(readout_distractor, dtype=float)
+        auc = auc_from_scores(readout_target, readout_distractor)
+
         rows.append({
             "gating": gating,
             "readout": readout,
@@ -202,6 +341,18 @@ def run_cell(job: dict) -> list[dict]:
             "theta": job["theta"],
             "seed": job["seed"],
             "n_tuned": n_tuned,
+            "n_nontuned": n_nontuned,
+            # Spikes per trial per neuron in each pool. The target column of
+            # the tuned pool is the activation cost the manuscript quotes, in
+            # units directly comparable between the two models.
+            "tuned_activation_target": tuned_target,
+            "tuned_activation_distractor": tuned_distractor,
+            "nontuned_activation_target": nontuned_target,
+            "nontuned_activation_distractor": nontuned_distractor,
+            "snr_target": snr_target,
+            "snr_distractor": snr_distractor,
+            "si_target": si_target,
+            "si_distractor": si_distractor,
             "auc": auc,
             # An AUC well below 0.5 does not mean the model is uninformative:
             # it means the readout separates the two classes with reversed
@@ -210,13 +361,7 @@ def run_cell(job: dict) -> list[dict]:
             # a model that is in fact discriminative, so the polarity-free
             # magnitude is carried alongside it.
             "auc_unsigned": max(auc, 1.0 - auc) if not np.isnan(auc) else auc,
-            "d_prime": d_prime_from_scores(target_scores, distractor_scores),
-            # Spikes emitted per trial per tuned neuron: the activation cost,
-            # in units directly comparable between the two models. Always a
-            # spike count, even when the decision variable is a peak potential.
-            "activation_target": float(np.mean(target_spikes) / n_tuned),
-            "activation_distractor": float(distractor_scores.mean() / n_tuned)
-            if readout == "spikes" else float("nan"),
+            "d_prime": d_prime_from_scores(readout_target, readout_distractor),
         })
     return rows
 
@@ -252,8 +397,8 @@ def main(argv=None) -> int:
     # Both default to what the manuscript reports; see the module docstring for
     # why each is contestable and what the alternative shows.
     parser.add_argument("--readout", choices=("spikes", "peak"), default="spikes",
-                        help="decision variable: summed spike count, or summed "
-                             "peak somatic membrane potential")
+                        help="decision variable for the secondary AUC: spikes "
+                             "per neuron, or peak somatic membrane potential")
     parser.add_argument("--tuned-by", choices=("hard", "own"), default="hard",
                         help="which model selects the tuned subpopulation")
     args = parser.parse_args(argv)
@@ -297,21 +442,32 @@ def main(argv=None) -> int:
         writer.writerows(rows)
 
     print(f"  {elapsed:.1f}s, wrote {args.out} ({len(rows)} rows)")
-    print(f"\n  {'sigma':>6} {'hard AUC':>9} {'soft AUC':>9} "
-          f"{'hard |AUC|':>11} {'soft |AUC|':>11} "
-          f"{'hard spk':>9} {'soft spk':>9}")
-    for sigma in args.sigmas:
-        def pick(g, key):
-            vals = [r[key] for r in rows
-                    if r["gating"] == g and r["sigma"] == sigma
-                    and not np.isnan(r[key])]
-            return float(np.mean(vals)) if vals else float("nan")
-        print(f"  {sigma:>6.1f} {pick('hard','auc'):>9.3f} "
-              f"{pick('soft','auc'):>9.3f} "
-              f"{pick('hard','auc_unsigned'):>11.3f} "
-              f"{pick('soft','auc_unsigned'):>11.3f} "
-              f"{pick('hard','activation_target'):>9.3f} "
-              f"{pick('soft','activation_target'):>9.3f}")
+
+    def pick(gating, sigma, key):
+        vals = [r[key] for r in rows
+                if r["gating"] == gating and r["sigma"] == sigma
+                and not np.isnan(r[key])]
+        return float(np.mean(vals)) if vals else float("nan")
+
+    # The four primary quantities, per gating mode, per sigma. Columns are
+    # spikes per neuron per trial in the tuned and non-tuned pools on the
+    # target, their ratio, and the selectivity index on each stimulus.
+    for gating in ("hard", "soft"):
+        print(f"\n  {gating.upper()} GATING "
+              f"(tuned-by={args.tuned_by}, readout={args.readout})")
+        print(f"  {'sigma':>6} {'tuned_tgt':>10} {'nontun_tgt':>11} "
+              f"{'tuned_dis':>10} {'nontun_dis':>11} "
+              f"{'SNR_tgt':>8} {'SI_tgt':>7} {'SI_dis':>7} {'|AUC|':>6}")
+        for sigma in args.sigmas:
+            print(f"  {sigma:>6.1f} "
+                  f"{pick(gating, sigma, 'tuned_activation_target'):>10.3f} "
+                  f"{pick(gating, sigma, 'nontuned_activation_target'):>11.3f} "
+                  f"{pick(gating, sigma, 'tuned_activation_distractor'):>10.3f} "
+                  f"{pick(gating, sigma, 'nontuned_activation_distractor'):>11.3f} "
+                  f"{pick(gating, sigma, 'snr_target'):>8.2f} "
+                  f"{pick(gating, sigma, 'si_target'):>7.3f} "
+                  f"{pick(gating, sigma, 'si_distractor'):>7.3f} "
+                  f"{pick(gating, sigma, 'auc_unsigned'):>6.3f}")
     return 0
 
 

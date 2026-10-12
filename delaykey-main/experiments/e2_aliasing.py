@@ -177,8 +177,10 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     if args.quick:
+        # Two dispersions and both references the figure reads: panel b maps
+        # 8 ms across dispersions and needs at least two rows to draw.
         args.seeds, args.neurons = 3, 500
-        args.dispersions, args.reference_intervals = [20], [15]
+        args.dispersions, args.reference_intervals = [10, 20], [8, 15]
 
     probe_intervals = list(range(0, args.time_steps - args.onset - args.spread))
 

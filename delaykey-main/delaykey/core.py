@@ -79,6 +79,15 @@ def _delayed_drive(
     by a single matrix product, so the cost is ``max_delay + 1`` products of
     shape ``(units, features) @ (features, time)``.
 
+    That cost grows with the square of the time resolution, since a finer step
+    multiplies both the number of delay values and the length of the trial.
+    When ``x`` is sparse -- the two-event stimuli carry one spike per active
+    feature -- it is far cheaper to scatter each spike to its arrival times
+    instead: ``drive[u, t + d[u, f]] += w[u, f] x[t, f]`` for every nonzero
+    ``x[t, f]``, a cost proportional to the spikes times the units. Both paths
+    compute the same sum; the scatter accumulates feature by feature, in the
+    order the reference implementation does.
+
     Args:
         x: ``(time, features)`` input, spike counts or binary.
         delays: ``(units, features)`` non-negative integer delays.
@@ -89,6 +98,11 @@ def _delayed_drive(
     """
     n_time, n_features = x.shape
     n_units = delays.shape[0]
+
+    times, feats = np.nonzero(x)
+    if times.size <= 0.05 * x.size:
+        return _scattered_drive(x, times, feats, delays, weights)
+
     drive = np.zeros((n_units, n_time), dtype=np.float64)
 
     # Delays at or beyond the window can never contribute within the trial.
@@ -105,6 +119,32 @@ def _delayed_drive(
         drive += w_k @ shifted.T
 
     return drive
+
+
+def _scattered_drive(x, times, feats, delays, weights) -> np.ndarray:
+    """The delayed drive of a sparse input, one spike at a time.
+
+    See :func:`_delayed_drive`. Spikes are taken feature by feature, in
+    ascending feature order, so each unit's drive accumulates in the same order
+    as in :func:`simulate_reference`.
+    """
+    n_time = x.shape[0]
+    n_units = delays.shape[0]
+    index, value = [], []
+    order = np.lexsort((times, feats))
+    for t, f in zip(times[order], feats[order]):
+        units = np.flatnonzero(weights[:, f])
+        if units.size == 0:
+            continue
+        arrive = t + delays[units, f]
+        keep = arrive < n_time
+        index.append(units[keep] * n_time + arrive[keep])
+        value.append(x[t, f] * weights[units[keep], f])
+    if not index:
+        return np.zeros((n_units, n_time), dtype=np.float64)
+    flat = np.bincount(np.concatenate(index), weights=np.concatenate(value),
+                       minlength=n_units * n_time)
+    return flat.reshape(n_units, n_time)
 
 
 def simulate_population(
