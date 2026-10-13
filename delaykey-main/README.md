@@ -58,6 +58,7 @@ disagrees with it, the docstring is stale.
 | --- | --- | --- | --- |
 | Fig 2, dispersion sweep | `experiments/e1_dispersion.py` | `e1_dispersion.csv` | `figures/make_fig_e1.py` |
 | Fig 2, theory lines | `experiments/e1_theory.py` | `e1_theory.csv` | `figures/make_fig_e1.py` |
+| S2 Text, Fig 2 against a finer step, a 100 ms plateau and background input | `experiments/e1_dispersion.py` with `--steps-per-ms`, `--plateau-steps`, `--background-rate`; `experiments/e1_theory.py` with `--steps-per-ms`, `--plateau-steps` | `e1_robustness_*.csv`, `e1_theory_step.csv`, `e1_theory_plateau.csv` | `figures/report_e1_robustness.py` |
 | Fig 3a–c, codable interval | `experiments/e2_aliasing.py` | `e2_aliasing.csv` | `figures/make_fig_e2.py` |
 | Fig 3d–f, precision | `experiments/e6_precision.py` | `e6_precision.csv` | `figures/make_fig_e6.py` |
 | S2 Text, precision time-step convergence | `experiments/e6_precision.py` at 1, 4, 10 and 20 steps per ms | `e6_convergence_r*.csv` | `figures/report_e6_convergence.py` |

@@ -15,6 +15,18 @@ integer, since delays are whole steps.
 Writes one row per (theta, interval, dispersion). The figure reads it beside the
 sweep's CSV.
 
+``--steps-per-ms`` computes the same fractions for the sweep on a finer step,
+scaled as ``e1_dispersion.py --steps-per-ms`` scales the simulation, and is what
+the robustness report compares that run against. Durations stay in ms on the
+command line and in the CSV. A finer step needs a finer grid of the potential
+where the two volleys' arrival windows are disjoint: the calculation rounds each
+step's decay to its grid, a potential small enough that the decay rounds back to
+itself never decays, and that residue grows with the number of steps per
+time constant. Left on the reported grid, it carries event 1 over to event 2
+and puts a few hundredths of a per cent into the sequence class at dispersions
+too narrow to make any. Overlapping arrivals never let the potential decay that
+far, so the finer grid is spent only where the windows are disjoint.
+
 Usage::
 
     python experiments/e1_theory.py            # the reported grid, a few minutes
@@ -48,15 +60,26 @@ FIELDNAMES = [
 ]
 
 
+def fieldnames(steps_per_ms: int) -> list[str]:
+    """CSV columns; the step is written only off the reported 1 ms, so that the
+    reported invocation still writes the reported CSV byte for byte."""
+    return FIELDNAMES + (["steps_per_ms"] if steps_per_ms != 1 else [])
+
+
 def run_cell(job: dict) -> dict:
+    r = job["steps_per_ms"]
+    disjoint = job["dispersion"] < job["interval"] - job["spread"]
     probs = class_probabilities(
-        job["dispersion"], job["interval"], job["theta"],
+        job["dispersion"] * r, job["interval"] * r, job["theta"],
         p_connect=job["p_connect"], n_per_event=job["n_per_event"],
-        onset=job["onset"], spread=job["spread"], n_time=job["n_time"],
-        tau_den=job["tau_den"], alpha=job["alpha"], tau_mem=job["tau_mem"],
-        plateau_steps=job["plateau_steps"])
-    return dict(job, sequence=probs.sequence, event1=probs.event1,
-                event2=probs.event2, dual=probs.dual, silent=probs.silent)
+        onset=job["onset"] * r, spread=job["spread"] * r,
+        n_time=job["n_time"] * r, tau_den=job["tau_den"] * r,
+        alpha=job["alpha"] / r, tau_mem=job["tau_mem"] * r,
+        plateau_steps=job["plateau_steps"] * r,
+        resolution=1000 * r if disjoint else 1000)
+    row = dict(job, sequence=probs.sequence, event1=probs.event1,
+               event2=probs.event2, dual=probs.dual, silent=probs.silent)
+    return {k: row[k] for k in fieldnames(r)}
 
 
 def main(argv=None) -> int:
@@ -75,6 +98,9 @@ def main(argv=None) -> int:
     parser.add_argument("--alpha", type=float, default=2.5)
     parser.add_argument("--tau-mem", type=float, default=10.0)
     parser.add_argument("--plateau-steps", type=int, default=15)
+    parser.add_argument("--steps-per-ms", type=int, default=1,
+                        help="calculation steps per millisecond; the reported "
+                             "theory uses 1 (see the module docstring)")
     parser.add_argument("--dispersions", type=int, nargs="+",
                         default=list(range(0, 61)))
     parser.add_argument("--thetas", type=float, nargs="+",
@@ -88,31 +114,34 @@ def main(argv=None) -> int:
         args.thetas = [4.5]
         args.intervals = [5, 10, 15, 20]
 
+    r = args.steps_per_ms
     fixed = dict(p_connect=args.p_connect, n_per_event=args.per_event,
                  onset=args.onset, spread=args.spread, n_time=args.time_steps,
                  tau_den=args.tau_den, alpha=args.alpha, tau_mem=args.tau_mem,
-                 plateau_steps=args.plateau_steps,
-                 soma_margin=soma_margin(args.alpha, args.tau_mem,
-                                         args.plateau_steps))
+                 plateau_steps=args.plateau_steps, steps_per_ms=r,
+                 soma_margin=soma_margin(args.alpha / r, args.tau_mem * r,
+                                         args.plateau_steps * r))
     jobs = [dict(fixed, dispersion=d, theta=th, interval=iv)
             for th, iv, d in itertools.product(args.thetas, args.intervals,
                                                args.dispersions)]
     n_workers = args.jobs or max(1, mp.cpu_count() - 1)
     print(f"E1 theory: {len(jobs)} cells ({len(args.thetas)} thetas x "
           f"{len(args.intervals)} intervals x {len(args.dispersions)} dispersions), "
-          f"{n_workers} workers")
+          f"{r} steps/ms, {n_workers} workers")
 
     started = time.time()
     if n_workers == 1:
         rows = [run_cell(job) for job in jobs]
     else:
         with mp.Pool(n_workers) as pool:
-            rows = pool.map(run_cell, jobs, chunksize=8)
+            # A finer step makes cells costly and unequal, so they are
+            # handed out one at a time.
+            rows = pool.map(run_cell, jobs, chunksize=8 if r == 1 else 1)
     print(f"  {time.time() - started:.1f}s")
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDNAMES)
+        writer = csv.DictWriter(handle, fieldnames=fieldnames(r))
         writer.writeheader()
         writer.writerows(rows)
     print(f"  wrote {args.out}")

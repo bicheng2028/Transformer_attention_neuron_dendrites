@@ -35,14 +35,16 @@ visible anatomy instead of a caption sentence. The delay gradient rides on the
 same curve through :func:`~illustrate.gradient_along`, and a keyline separates
 the two afferents where they cross.
 
-**On the numbers.** Every value plotted comes from the manuscript body:
-``v_axon ~ 0.3 m/s`` and ``tau_window = 1-2 ms``, giving 300-600 um
-(Eq.~\\ref{eq:column_diameter}, content.tex around line 830). The text asserts
-agreement with "measured column dimensions in visual, somatosensory, and barrel
-cortices" but attaches no numbers to those citations, so no measured diameters
-are overlaid --- there is nothing to overlay that the manuscript itself states.
-The velocity axis is swept only to give the relation an extent; the single
-manuscript value on it is marked.
+**On the numbers.** The worked value is ``v_axon ~ 0.3 m/s`` and
+``tau_window = 1-2 ms``, giving 300-600 um (Eq.~\\ref{eq:column_diameter}). The
+0.3 m/s is the conduction velocity of thalamocortical axons between the white
+matter and L4, 0.31-0.33 m/s, measured along their radial course in mouse
+thalamocortical slices (Salami et al. 2003) -- the axons panel a draws, and the
+only measurement of them inside cortex. Two measured areas are overlaid
+(MEASURED, below). The survey that chose them, with every other area in which
+both quantities have been measured, is reviews/column-areas-2026-10.md, and
+S8 Text carries its table. The velocity axis is swept only to give the relation
+an extent.
 
 Usage::
 
@@ -73,54 +75,58 @@ import matplotlib.patches as mpatches  # noqa: E402
 # The two quantities the figure exists to multiply, taken verbatim from the
 # manuscript body (content.tex, "Estimating column diameter").
 # ---------------------------------------------------------------------------
-V_AXON = 0.3               # horizontal conduction velocity of LGN axons in L4, m/s
+V_AXON = 0.3               # thalamocortical axons, white matter to L4, m/s
+                           # (0.31-0.33 m/s, mouse; Salami et al. 2003)
 TAU_MIN, TAU_MAX = 1.0, 2.0   # effective coincidence window of L4 stellates, ms
 V_MAX = 0.75               # extent of the swept velocity axis, m/s
-                           # (the monkey mean, 0.62, must sit inside it)
 
 # d in micrometres = v in m/s x tau in ms x 1000.
 D_MIN = V_AXON * TAU_MIN * 1e3    # 300 um
 D_MAX = V_AXON * TAU_MAX * 1e3    # 600 um
 
 # ---------------------------------------------------------------------------
-# The two areas in which horizontal intracortical conduction has been measured
-# directly, in the layer the construction concerns, together with the column
-# each area is conventionally credited with. These are literature values, not
-# output of any experiment in this repository, so they are written here with
-# their sources rather than read from a CSV.
+# The two areas overlaid on the relation. Each pairs a horizontal conduction
+# velocity that its source attributes to monosynaptic transmission with a
+# column defined by thalamic afferents, measured in the same species. These are
+# literature values, not output of any experiment in this repository, so they
+# are written here with their sources rather than read from a CSV. The survey
+# behind the choice, and the areas it leaves out, are in
+# reviews/column-areas-2026-10.md and S8 Text.
 #
-#   Girard, Hupe & Bullier (2001) J Neurophysiol 85:1328. 156 stimulating-
-#   recording pairs in V1 of three macaques; median orthodromic conduction
-#   speed of intracortical horizontal axons 0.33 m/s. Ocular dominance column
-#   width in macaque V1 is ~400 um.
+#   V1, macaque. Girard, Hupe & Bullier (2001) J Neurophysiol 85:1328, Results:
+#   from orthodromic activation, local connections have a median conduction
+#   velocity of 0.33 m/s (mean 0.6), many recorded within a couple of
+#   millimetres of the stimulating electrode, in two monkeys. Each value is a
+#   distance over a latency that includes at least one synaptic delay, and the
+#   paper gives no spread. The 156 pairs in three monkeys, the mean of 0.62 and
+#   the maximum of 3.55 m/s sometimes quoted with it come from Zhaoping's
+#   re-analysis of the same data (Vision Res 2026), not from Girard.
+#   Column: single-eye ocular dominance widths of 395-670 um, per-hemisphere
+#   means along the V1/V2 border in 12 hemispheres of 6 monkeys (Horton &
+#   Hocking 1996, J Neurosci 16:7228).
 #
-#   Scheuer, Judge, Zhao & Jackson (2023) Cereb Cortex 33:9917. hVOS voltage
-#   imaging of PV interneurons in mouse barrel cortex; L4 INTRALAMINAR
-#   conduction 142 +/- 76 um/ms, i.e. 0.142 +/- 0.076 m/s. Mouse barrel
-#   ~200-300 um across.
+#   Barrel, mouse. Scheuer, Judge, Zhao & Jackson (2023) Cereb Cortex 33:9917:
+#   the L4 intralaminar latency slope of voltage responses (hVOS) in PV
+#   interneurons, restricted to monosynaptic responses, 142 +/- 76 um/ms, mean
+#   +/- SD over four slices, recorded at room temperature in 4 uM dipicrylamine.
+#   Column: in-slice L4 barrel widths of 124 +/- 5 to 150 +/- 6 um by slice
+#   orientation (Judge & Jackson 2026, eNeuro) -- chords, so a lower bound --
+#   up to the ~300 um C2 diameter of Sofroniew et al. (2015, eLife).
 #
-# The error bar plotted is on v only; the column figure is drawn as the range
-# the area is quoted at, not as a measurement with its own interval.
-# ---------------------------------------------------------------------------
-# v is plotted as an interval, not a point, because each source reports a
-# spread. Neither spread is the one the mechanism is about -- the spread of v
-# across the afferents converging on one column -- so the bars show what each
-# study measured and nothing more: Girard's median-to-mean skew across 156
-# stimulating-recording pairs, and Scheuer's SD across four slices.
+# v_pt is the statistic each source reports and is where the marker sits;
+# v_lo..v_hi is the spread the source gives around it, absent for V1. Neither
+# is the spread the mechanism is about -- of v across the afferents converging
+# on one column. d_lo..d_hi is the measured column range, and the marker sits
+# at its middle.
 #
-#   monkey V1     median 0.33, mean 0.62 m/s (Girard 2001).  The gap between
-#                 the two is the skew: the distribution has a long fast tail,
-#                 and Zhaoping (2025) shows it is distance-dependent.  Bar spans
-#                 median to mean.
-#   mouse barrel  142 +/- 76 um/ms (Scheuer 2023), mean +/- SD over four
-#                 slices.  Bar spans one SD either side, clipped at zero.
-# v_pt is the statistic each source actually reports and is where the marker
-# sits; v_lo..v_hi is the spread around it.  Plotting the marker at the midpoint
-# of the spread would put it at neither statistic.
+# Labels are short because the panel is 43 x 23 mm at 8 pt: "monkey V1" and
+# "mouse barrel" cannot sit beside their bars without crossing a tau line, and
+# the caption names the species. lab_v, lab_d and lab_ha place each label in
+# data units, checked clear of both tau lines, the 0.3 m/s rule and its bar.
 MEASURED = (
-    # label,          v_pt,  v_lo,  v_hi,  d_lo,  d_hi
-    ("monkey V1",     0.33,  0.33,  0.62,  380.0, 420.0),   # median; bar to mean
-    ("mouse barrel",  0.142, 0.066, 0.218, 200.0, 300.0),   # mean; bar is +/-1 SD
+    # label,   v_pt,  v_lo,  v_hi,  d_lo,  d_hi,  lab_v, lab_d, lab_ha
+    ("V1",     0.33,  0.33,  0.33,  395.0, 670.0, 0.346, 532.5, "left"),
+    ("barrel", 0.142, 0.066, 0.218, 124.0, 300.0, 0.008, 442.0, "left"),
 )
 
 # ---------------------------------------------------------------------------
@@ -492,13 +498,11 @@ def draw_timing(ax) -> None:
 def draw_prediction(fig, canvas_ax) -> None:
     """Eq. (column_diameter) as a relation, plus the worked value beside it.
 
-    Only manuscript numbers appear: the 1-2 ms window bounds the band, the
-    0.3 m/s velocity is marked, and the 300-600 um it implies is the bar. The
-    velocity axis is swept to give the product an extent, and the two areas in
-    which horizontal intracortical conduction has been measured directly are
-    overlaid on it (MEASURED). Two points are not a regression, and the caption
-    says so; what they establish is that the relation is not being asked to
-    hold at a single calibration point.
+    The 1-2 ms window bounds the band, the thalamocortical velocity measured
+    inside cortex (0.3 m/s) is marked, and the 300-600 um it implies is the bar.
+    The velocity axis is swept to give the product an extent, and the two areas
+    in MEASURED are overlaid on it, each as its measured column range against
+    its measured velocity.
     """
     ax = axes_mm(fig, PB_X, PB_Y, PB_W, PB_H)
     colour = PALETTE["purple"]
@@ -516,7 +520,8 @@ def draw_prediction(fig, canvas_ax) -> None:
     ax.text(V_MAX * 0.99, 620.0, f"$\\tau$ = {TAU_MIN:g} ms", color=colour,
             fontsize=PT_ANNOT, ha="right", va="top", zorder=5)
 
-    # The one velocity the manuscript supplies, and the diameter it implies.
+    # The thalamocortical velocity measured inside cortex, and the diameter it
+    # implies.
     ax.plot([V_AXON, V_AXON], [0.0, 1285.0], color=C["rule"], lw=0.5,
             linestyle=dashed((1.4, 1.4)), zorder=2)
     for d in (D_MIN, D_MAX):
@@ -530,10 +535,10 @@ def draw_prediction(fig, canvas_ax) -> None:
     ax.text(V_AXON + 0.014, 1330.0, f"$v \\approx {V_AXON:g}$ m s$^{{-1}}$",
             color=C["rule"], fontsize=PT_ANNOT, ha="left", va="top", zorder=5)
 
-    # The two areas with a directly measured horizontal conduction velocity.
-    # Each is drawn as its column range against its measured v, so the reader
-    # sees the datum as an interval and not as a point estimate it is not.
-    for name, v_m, v_lo, v_hi, d_lo, d_hi in MEASURED:
+    # The two measured areas. Each is drawn as its column range against its
+    # measured v, so the reader sees the datum as an interval and not as a point
+    # estimate it is not; the marker sits at the reported velocity statistic.
+    for name, v_m, v_lo, v_hi, d_lo, d_hi, lab_v, lab_d, lab_ha in MEASURED:
         d_m = 0.5 * (d_lo + d_hi)
         # the column range, vertically
         ax.plot([v_m, v_m], [d_lo, d_hi], color=C["ink"], lw=1.1,
@@ -541,16 +546,16 @@ def draw_prediction(fig, canvas_ax) -> None:
         for d in (d_lo, d_hi):
             ax.plot([v_m - 0.007, v_m + 0.007], [d, d], color=C["ink"],
                     lw=0.8, zorder=6)
-        # the measured velocity range, horizontally: a box, not a point
-        ax.plot([v_lo, v_hi], [d_m, d_m], color=C["ink"], lw=0.6, zorder=5)
-        for v in (v_lo, v_hi):
-            ax.plot([v, v], [d_m - 18.0, d_m + 18.0], color=C["ink"],
-                    lw=0.6, zorder=5)
-        # Labels go on opposite sides: the two points sit close in x, and the
-        # worked value's bar occupies the space between them.
-        # both labels below their own marker: anywhere above collides with the
-        # tau curve labels, which are anchored to the right edge
-        note(ax, v_m, d_lo - 34.0, name, color=C["ink"], ha="center", va="top")
+        ax.plot([v_m], [d_m], marker="o", markersize=2.4, color=C["ink"],
+                linestyle="none", zorder=7)
+        # The velocity spread, horizontally, where the source reports one.
+        if v_hi > v_lo:
+            ax.plot([v_lo, v_hi], [d_m, d_m], color=C["ink"], lw=0.6,
+                    zorder=5)
+            for v in (v_lo, v_hi):
+                ax.plot([v, v], [d_m - 18.0, d_m + 18.0], color=C["ink"],
+                        lw=0.6, zorder=5)
+        note(ax, lab_v, lab_d, name, color=C["ink"], ha=lab_ha, va="center")
 
     ax.set_xlim(0.0, V_MAX * 1.03)
     ax.set_ylim(0.0, 1350.0)
@@ -710,7 +715,7 @@ def caption(geometry: bool = False) -> str:
         f"many angles drive it to the inscribed disc (dotted), of the same "
         f"diameter. The approximately circular cross-section of a column in "
         f"tangential section is thus a consequence of the same construction "
-        f"that fixes its diameter, not a separate fact about it. "
+        f"that fixes its diameter. "
     ) if geometry else ""
     plot_letter = "c" if geometry else "b"
     return (
@@ -721,13 +726,12 @@ def caption(geometry: bool = False) -> str:
         f"are myelinated (internodal sheaths separated by nodes of Ranvier), "
         f"shed that myelin at the L4 boundary, and "
         f"run in opposite directions across column~A and column~B. The "
-        f"antiparallel arrangement is drawn because it makes the mapping from "
-        f"firing latency to columnar position legible; it is not the geometry "
-        + ("the diameter estimate assumes, which is the orthogonal crossing "
-           "shown in tangential view in \\textbf{b}. "
+        f"antiparallel arrangement maps firing latency onto columnar position; "
+        + ("the diameter estimate uses the orthogonal crossing shown in "
+           "tangential view in \\textbf{b}. "
            if geometry else
-           "the diameter estimate assumes, which is orthogonal crossing (see "
-           "text). Antiparallel afferents would halve the predicted diameter. ")
+           "the diameter estimate uses orthogonal crossing (see text), and "
+           "antiparallel afferents would halve it. ")
         + f"Colour "
         f"along each intracortical axon is the conduction delay accumulated "
         f"from that axon's own entry point (key above the sheet), which "
@@ -748,16 +752,24 @@ def caption(geometry: bool = False) -> str:
         f"discrete. "
         f"{geom}"
         f"\\textbf{{{plot_letter}}}, The diameter that follows, Eq.~\\ref{{eq:column_diameter}}: "
-        f"predicted column diameter against horizontal conduction velocity, "
-        f"banded over the effective coincidence window that feedforward "
-        f"inhibition can impose ($\\tau = {TAU_MIN:g}$--{TAU_MAX:g}~ms). At the "
-        f"thalamocortical velocity reported for L4 ($v \\approx {V_AXON:g}$~m/s, "
-        f"dashed line) the relation gives {D_MIN:.0f}--{D_MAX:.0f}~$\\mu$m "
-        f"(bar), the range quoted in the text. The relation is falsifiable: an "
-        f"effective window measured in the awake animal that is substantially "
-        f"broader than {TAU_MAX:g}~ms, together with a failure of manipulations "
-        f"of that window to alter columnar feature tuning, would refute the "
-        f"mechanism."
+        f"predicted column diameter against conduction velocity, banded over "
+        f"the effective coincidence window that feedforward inhibition can "
+        f"impose ($\\tau = {TAU_MIN:g}$--{TAU_MAX:g}~ms). At "
+        f"$v \\approx {V_AXON:g}$~m/s (dashed line), the speed measured for "
+        f"thalamocortical axons between the white matter and L4, the relation "
+        f"gives {D_MIN:.0f}--{D_MAX:.0f}~$\\mu$m (bar). Overlaid are the two "
+        f"areas that pair a horizontal velocity attributed to monosynaptic "
+        f"transmission with a column defined by thalamic afferents. V1, "
+        f"monkey: the median of orthodromic single-unit speeds, 0.33~m/s (no "
+        f"spread reported), against single-eye ocular dominance columns "
+        f"395--670~$\\mu$m wide. Barrel, mouse: the mean L4 velocity from "
+        f"voltage responses of parvalbumin interneurons in slices, "
+        f"$142~\\mu$m/ms, bar $\\pm 1$~SD across slices, against barrels from "
+        f"124~$\\mu$m, an in-slice width and so a lower bound, to about "
+        f"300~$\\mu$m. Velocity bars show the variation each study reports, "
+        f"not the spread across one column's afferents. Sources, and the other "
+        f"areas in which both quantities have been measured, are in "
+        f"\\textbf{{S8 Text}}."
     )
 
 
