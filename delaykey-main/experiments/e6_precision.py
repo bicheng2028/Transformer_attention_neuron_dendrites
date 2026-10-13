@@ -18,6 +18,18 @@ The reported quantity is the fraction of the original sequence detectors that
 still respond conjunctively. Delays are re-rounded to whole steps after
 perturbation, since the simulation is discrete-time.
 
+That rounding is why this experiment runs on a finer step than the others. On
+a 1 ms step a perturbation smaller than half a millisecond rounds back to the
+delay it started from and costs nothing, so a 2% jitter on a 20 ms delay
+spread looks almost harmless. ``--steps-per-ms`` puts everything on a finer
+grid: spike offsets, delays, time constants, plateau, refractory period and
+perturbations. Spike offsets and delays are then drawn on that grid, and
+``alpha`` is divided by it, so the soma integrates the same charge per
+millisecond. At 1 step per ms it reproduces the original run exactly. The
+reported run uses 10. At 4 steps per ms the smallest perturbations at the
+narrowest dispersion are still partly rounded away; 10 and 20 agree
+(S2 Text, ``figures/report_e6_convergence.py``).
+
 Usage::
 
     python experiments/e6_precision.py --quick
@@ -49,25 +61,28 @@ from delaykey.stimuli import random_connectivity, two_event_stimulus  # noqa: E4
 
 FIELDNAMES = [
     "perturbation", "magnitude", "dispersion", "theta", "interval", "seed",
-    "n_neurons", "n_reference", "n_retained", "retention",
+    "n_neurons", "steps_per_ms", "n_reference", "n_retained", "retention",
 ]
 
 
 def run_cell(job: dict) -> list[dict]:
     """Identify sequence detectors, then perturb their delays and re-test."""
     rng = np.random.default_rng(job["seed"])
-    params = NeuronParams(theta=job["theta"], alpha=job["alpha"],
-                          plateau_steps=job["plateau_steps"],
-                          refractory=job["refractory"], v_contrib=0.0)
+    r = job["steps_per_ms"]
+    base = NeuronParams()
+    params = NeuronParams(theta=job["theta"], alpha=job["alpha"] / r,
+                          tau_den=base.tau_den * r, tau_mem=base.tau_mem * r,
+                          plateau_steps=job["plateau_steps"] * r,
+                          refractory=job["refractory"] * r, v_contrib=0.0)
 
     stim = two_event_stimulus(
         rng, n_features=job["n_features"], n_per_event=job["n_per_event"],
-        onset1=job["onset1"], interval=job["interval"], spread=job["spread"],
-        n_time=job["n_time"],
+        onset1=job["onset1"] * r, interval=job["interval"] * r,
+        spread=job["spread"] * r, n_time=job["n_time"] * r,
     )
     delays, weights = random_connectivity(
         rng, n_neurons=job["n_neurons"], n_features=job["n_features"],
-        dispersion=job["dispersion"], n_branches=job["n_branches"],
+        dispersion=job["dispersion"] * r, n_branches=job["n_branches"],
         p_connect=job["p_connect"],
     )
 
@@ -109,6 +124,7 @@ def run_cell(job: dict) -> list[dict]:
             "interval": job["interval"],
             "seed": job["seed"],
             "n_neurons": job["n_neurons"],
+            "steps_per_ms": job["steps_per_ms"],
             "n_reference": n_reference,
             "n_retained": n_retained,
             "retention": n_retained / n_reference,
@@ -136,6 +152,9 @@ def main(argv=None) -> int:
     parser.add_argument("--alpha", type=float, default=2.5)
     parser.add_argument("--plateau-steps", type=int, default=15)
     parser.add_argument("--refractory", type=int, default=2)
+    parser.add_argument("--steps-per-ms", type=int, default=1,
+                        help="simulation steps per millisecond; the reported "
+                             "run uses 10 (see the module docstring)")
 
     parser.add_argument("--dispersions", type=int, nargs="+", default=[20, 30])
     parser.add_argument("--thetas", type=float, nargs="+", default=[2.5])
@@ -159,7 +178,7 @@ def main(argv=None) -> int:
         onset1=args.onset, spread=args.spread, n_time=args.time_steps,
         p_connect=args.p_connect, alpha=args.alpha,
         plateau_steps=args.plateau_steps, refractory=args.refractory,
-        perturbations=perturbations,
+        steps_per_ms=args.steps_per_ms, perturbations=perturbations,
     )
     jobs = [dict(fixed, dispersion=d, theta=th, interval=iv, seed=s)
             for d, th, iv, s in itertools.product(
@@ -168,7 +187,8 @@ def main(argv=None) -> int:
 
     n_workers = args.jobs or max(1, mp.cpu_count() - 1)
     print(f"E6: {len(jobs)} populations x {len(perturbations)} perturbations, "
-          f"{args.neurons} neurons, {n_workers} workers")
+          f"{args.neurons} neurons, {args.steps_per_ms} steps/ms, "
+          f"{n_workers} workers")
 
     started = time.time()
     if n_workers == 1:

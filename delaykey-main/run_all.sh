@@ -71,6 +71,57 @@ run "Experiment 5: dispersion sweep" \
     --p-connect 0.1 \
     --out "$RESULTS/e1_dispersion.csv"
 
+# The same classes computed from the arrival statistics, for Fig 2's theory
+# lines. Deterministic, so it takes no seeds; its defaults are the reported grid.
+run "Fig 2 theory: detector classes without simulation" \
+    experiments/e1_theory.py \
+    --out "$RESULTS/e1_theory.csv"
+
+# The same sweep against three of the model's simplifications, on a reduced
+# grid: as reported, on finer steps, with a 100 ms plateau, and under Poisson
+# background input (S2 Text). figures/report_e1_robustness.py prints the
+# comparison.
+run "Fig 2 robustness: as reported" \
+    experiments/e1_dispersion.py --seeds 20 \
+    --dispersions 0 5 10 15 20 25 30 40 50 --thetas 2.5 4.5 --intervals 15 \
+    --out "$RESULTS/e1_robustness_reported.csv"
+# 0.1 ms is the step compared cell by cell; 0.25 and 0.05 ms show it converged.
+for r in 4 10 20; do
+    run "Fig 2 robustness: $r steps per ms" \
+        experiments/e1_dispersion.py --seeds 20 --steps-per-ms $r \
+        --dispersions 0 5 10 15 20 25 30 40 50 --thetas 2.5 4.5 --intervals 15 \
+        --out "$RESULTS/e1_robustness_step_r$r.csv"
+done
+run "Fig 2 robustness: 100 ms plateau" \
+    experiments/e1_dispersion.py --seeds 20 --plateau-steps 100 \
+    --dispersions 0 5 10 15 20 25 30 40 50 --thetas 2.5 4.5 --intervals 15 \
+    --out "$RESULTS/e1_robustness_plateau.csv"
+# Background at eight rates, over 100 seeds. The report runs each gate at the
+# highest rate that keeps the sequence detectors found without background from
+# answering one event alone in more than 5% of cases, and estimating that at the
+# strict gate takes more than the hundred-odd detectors 20 seeds hold. It
+# compares the other conditions with seeds 0-19 of that rate, which are the rows
+# a 20-seed run would write.
+for rate in 0.25 0.5 0.75 1 2 3 4 5; do
+    run "Fig 2 robustness: background at $rate Hz" \
+        experiments/e1_dispersion.py --seeds 100 --background-rate $rate \
+        --dispersions 0 5 10 15 20 25 30 40 50 --thetas 2.5 4.5 --intervals 15 \
+        --out "$RESULTS/e1_robustness_background_${rate}Hz.csv"
+done
+# Theory for the two departures it covers, on the four simulated intervals so
+# that Fig 2c's slopes can be compared. The finer step takes a quarter of an hour
+# on 16 cores, which a smoke test cannot spare.
+run "Fig 2 robustness: theory with a 100 ms plateau" \
+    experiments/e1_theory.py --plateau-steps 100 \
+    --thetas 2.5 4.5 --intervals 5 10 15 20 \
+    --out "$RESULTS/e1_theory_plateau.csv"
+if [ -z "$QUICK" ]; then
+    run "Fig 2 robustness: theory on a 0.1 ms step" \
+        experiments/e1_theory.py --steps-per-ms 10 \
+        --thetas 2.5 4.5 --intervals 5 10 15 20 \
+        --out "$RESULTS/e1_theory_step.csv"
+fi
+
 # --------------------------------------------------------------------------
 # Manuscript Experiment 6 -- aliasing and the bound on codable intervals.
 #
@@ -135,13 +186,34 @@ run "Experiment 4: population coding" \
 # absolute timing tolerance rather than the fixed percentage two curves at one
 # interval invited the reader to infer.
 # --------------------------------------------------------------------------
+# On 10 steps per ms, not 1: on a 1 ms step a perturbation under half a
+# millisecond rounds back to the delay it started from, which inflated the
+# small-perturbation retention the text once quoted. The convergence runs below
+# are the evidence that 10 is enough.
 run "Experiment 7: precision budget" \
-    experiments/e6_precision.py --seeds 20 \
+    experiments/e6_precision.py --seeds 20 --steps-per-ms 10 \
     --dispersions 10 15 20 25 30 35 40 45 50 \
     --thetas 2.5 --intervals 10 15 20 \
     --jitters 0.0 0.02 0.05 0.10 0.20 0.30 0.01 0.03 0.075 0.15 0.25 \
     --scales 0.80 0.85 0.90 0.925 0.95 0.975 1.025 1.05 1.075 1.10 1.15 1.20 \
     --out "$RESULTS/e6_precision.csv"
+
+# The same sweep on a reduced grid at four time steps, for the S2 Text
+# convergence check (figures/report_e6_convergence.py prints the table).
+for r in 1 4 10 20; do
+    run "Experiment 7 convergence: $r steps per ms" \
+        experiments/e6_precision.py --seeds 20 --steps-per-ms $r \
+        --dispersions 15 20 30 50 --thetas 2.5 --intervals 15 \
+        --jitters 0.0 0.02 0.05 0.10 0.20 0.30 0.01 0.03 0.075 0.15 0.25 \
+        --scales 0.80 0.85 0.90 0.925 0.95 0.975 1.025 1.05 1.075 1.10 1.15 1.20 \
+        --out "$RESULTS/e6_convergence_r$r.csv"
+done
+
+# Why slowing costs less than speeding near the codable bound: the signed
+# alignment of the selected detectors' two volleys (S2 Text).
+run "Experiment 7 alignment" \
+    experiments/e6_alignment.py --seeds 20 \
+    --out "$RESULTS/e6_alignment.csv"
 
 # --------------------------------------------------------------------------
 # Manuscript S5 Text (was Experiment 8) -- conjunctive versus additive
@@ -174,7 +246,7 @@ if [ -z "$QUICK" ]; then
     # populations came back with eight detectors each, which the figure's floor
     # rejects; at 120k the thinnest cell (50 ms) clears it.
     run "Experiment 7 at theta = 4.5" \
-        experiments/e6_precision.py \
+        experiments/e6_precision.py --steps-per-ms 10 \
         --seeds 20 --thetas 4.5 --neurons 120000 --jobs 4 \
         --dispersions 20 25 30 35 40 45 50 --intervals 15 \
         --jitters 0.0 0.02 0.05 0.10 0.20 0.30 0.01 0.03 0.075 0.15 0.25 \
@@ -228,10 +300,18 @@ for stem in e1_dispersion e2_aliasing e3_discriminability e4_noise \
             e5_population e6_precision e7_verification; do
     echo
     echo "=== figure ${stem%%_*} ==="
+    extra=()
+    [ "$stem" = e1_dispersion ] && extra=(--theory-csv "$RESULTS/e1_theory.csv")
+    # The smoke-test grid finds tens of detectors where the reported runs find
+    # thousands, so --quick lowers the two figures' detector floor rather than
+    # leave them nothing to draw.
+    if [ -n "$QUICK" ] && { [ "$stem" = e2_aliasing ] || [ "$stem" = e6_precision ]; }; then
+        extra+=(--min-detectors 1)
+    fi
     "$PYTHON" "figures/make_fig_${stem%%_*}.py" \
         --csv "$RESULTS/$stem.csv" \
         --out "$FIGURES/fig_$stem" \
-        --formats "${FORMATS[@]}"
+        --formats "${FORMATS[@]}" ${extra[@]+"${extra[@]}"}
 done
 
 echo

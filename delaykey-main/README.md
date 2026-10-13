@@ -1,7 +1,7 @@
 # delaykey
 
-Companion code for *Physical Delays as Keys: A Delay-Key Framework for Sequence
-Coding in Neural Circuits*.
+Companion code for *From anatomy to computation: axonal delay dispersion shifts
+neurons from event to sequence detection* (Bi and Sun).
 
 This repository is the target of the manuscript's Data Availability Statement.
 It contains the integrator-neuron model, the experiment scripts that produce
@@ -49,36 +49,44 @@ results alone.
 ## Which script is which experiment
 
 The script numbering (`e1`–`e7`) is the order in which the scripts were
-written; the manuscript numbering is the order in which the experiments are
-presented. They have never agreed, and they agree less since the manuscript's
-former Experiment 2 was cut and the rest renumbered. Nothing in the code can
-make them agree
-without renaming files that are cited in captions. This table is the mapping.
-It is the authority — if a docstring elsewhere disagrees with it, the docstring
-is stale.
+written, and it has never matched the manuscript's order. Nothing in the code
+can make the two agree without renaming files that are cited in captions, so
+this table is the mapping. It is the authority: if a docstring elsewhere
+disagrees with it, the docstring is stale.
 
-| Manuscript | Script | CSV | Figure script | Manuscript figure |
-| --- | --- | --- | --- | --- |
-| Experiment 1 | *(none — worked example)* | — | `../figures/make_fig4_lif_vs_integrator.py` | Fig 4 |
-| Experiment 2 | `experiments/e3_discriminability.py` | `e3_discriminability.csv` | `figures/make_fig_e3.py` | `fig:discriminability` |
-| Experiment 3 | `experiments/e5_population.py` | `e5_population.csv` | `figures/make_fig_e5.py` | Fig 6 |
-| Experiment 4 | `experiments/e1_dispersion.py` | `e1_dispersion.csv` | `figures/make_fig_e1.py` | `fig:k_dispersion` |
-| Experiment 5 | `experiments/e2_aliasing.py` | `e2_aliasing.csv` | `figures/make_fig_e2.py` | `fig:aliasing` |
-| Experiment 6 | `experiments/e6_precision.py` | `e6_precision.csv` | `figures/make_fig_e6.py` | `fig:precision` |
-| *(cut from the manuscript)* | `experiments/e4_noise.py` | `e4_noise.csv` | `figures/make_fig_e4.py` | — |
-| S5 Text (was Experiment 8) | `experiments/e7_verification.py` | `e7_verification.csv` | `figures/make_fig_e7.py` | `fig:verification` |
+| Manuscript | Script | CSV | Figure script |
+| --- | --- | --- | --- |
+| Fig 2, dispersion sweep | `experiments/e1_dispersion.py` | `e1_dispersion.csv` | `figures/make_fig_e1.py` |
+| Fig 2, theory lines | `experiments/e1_theory.py` | `e1_theory.csv` | `figures/make_fig_e1.py` |
+| S2 Text, Fig 2 against a finer step, a 100 ms plateau and background input | `experiments/e1_dispersion.py` with `--steps-per-ms`, `--plateau-steps`, `--background-rate`; `experiments/e1_theory.py` with `--steps-per-ms`, `--plateau-steps` | `e1_robustness_*.csv`, `e1_theory_step.csv`, `e1_theory_plateau.csv` | `figures/report_e1_robustness.py` |
+| Fig 3a–c, codable interval | `experiments/e2_aliasing.py` | `e2_aliasing.csv` | `figures/make_fig_e2.py` |
+| Fig 3d–f, precision | `experiments/e6_precision.py` | `e6_precision.csv` | `figures/make_fig_e6.py` |
+| S2 Text, precision time-step convergence | `experiments/e6_precision.py` at 1, 4, 10 and 20 steps per ms | `e6_convergence_r*.csv` | `figures/report_e6_convergence.py` |
+| S2 Text, why slowing costs less than speeding | `experiments/e6_alignment.py` | `e6_alignment.csv` | *(printed by the script)* |
+| Fig 4, column diameter | *(none: an analytic relation)* | — | `../figures/make_fig_column_diameter.py --geometry` |
+| S2 Fig, population coding | `experiments/e5_population.py` | `e5_population.csv` | `figures/make_fig_e5.py` |
+| S3 Fig a–c, worked example | *(none: hand-set example)* | — | `../figures/make_fig4_lif_vs_integrator.py` |
+| S3 Fig d–f, hard versus soft gating | `experiments/e3_discriminability.py` | `e3_discriminability.csv` | `figures/make_fig_e3.py` |
+| S5 Text, conjunctive soma | `experiments/e7_verification.py` | `e7_verification.csv` | `figures/make_fig_e7.py` |
+| *(cut from the manuscript)* | `experiments/e4_noise.py` | `e4_noise.csv` | `figures/make_fig_e4.py` |
 
-Experiment 1 has no experiment script because it is a two-input worked example
-rather than a measurement: one branch, two inputs, delays hand-set to (5, 0).
-Its figure is drawn by a standalone script with its own illustrative traces, but
-the claim it makes is asserted against the production simulator by
+The worked example of S3 Fig a–c has no experiment script, because it is a
+hand-set demonstration rather than a measurement: one branch, two inputs, and
+delays set to (5, 0). Its figure is drawn by a standalone script with
+illustrative traces. The claim it makes is still checked against the production
+simulator, by
 `tests/test_core.py::test_experiment1_worked_example_under_the_production_model`,
 which runs the same configuration through `simulate_population`.
 
-Experiments 2, 5, 6 and the S5 Text experiment are additionally run at `theta = 4.5`, the operating
-point Experiment 4 argues for, writing to `*_theta45.csv`. Those arms use larger
-populations because the detector count falls by roughly thirtyfold at the
-stricter gate.
+The theory lines of Fig 2 come from `delaykey/theory.py`, which computes the
+class fractions without simulating a neuron. They are checked against the
+simulator on fresh seeds by `tests/test_theory.py`.
+
+Four experiments are also run at `theta = 4.5`, the dispersion sweep's
+operating point, and write to `*_theta45.csv`: the gating comparison, the
+aliasing and precision sweeps, and the S5 Text experiment. Those arms use
+larger populations, because at the stricter gate the detector count falls by
+roughly thirtyfold.
 
 ## Reproducing the reported grids
 

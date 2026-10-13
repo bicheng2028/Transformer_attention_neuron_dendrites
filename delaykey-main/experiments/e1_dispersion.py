@@ -24,6 +24,26 @@ Writes one tidy CSV row per (dispersion, theta, interval, p_connect, seed).
 Figures are built separately from that CSV by ``figures/make_fig_e1.py``, so
 replotting never requires recomputing.
 
+Three flags exist to test the sweep against the model's simplifications rather
+than to produce the reported grid (S2 Text); ``figures/report_e1_robustness.py``
+prints the comparison:
+
+*--steps-per-ms*     puts everything on a finer step, exactly as
+                     ``e6_precision.py`` does: spike offsets and delays are
+                     drawn on the finer grid, every duration is scaled, and
+                     ``alpha`` is divided by the factor, so the soma integrates
+                     the same charge per millisecond.
+*--plateau-steps*    the plateau length, 15 ms in the reported model against a
+                     biological 100-200 ms.
+*--background-rate*  ongoing Poisson input on every feature for the whole
+                     trial, in Hz, rendered as in ``e4_noise.py``: each
+                     (step, feature) bin carries a spike independently, and a
+                     spike landing on a stimulus spike leaves one spike there.
+
+Durations on the command line are in milliseconds whatever the step, and are
+written to the CSV that way. Left at their defaults, the three reproduce the
+reported CSV byte for byte.
+
 Usage::
 
     python experiments/e1_dispersion.py --quick          # ~1 min smoke test
@@ -75,6 +95,29 @@ FIELDNAMES = [
     "dispersion", "theta", "interval", "p_connect", "seed",
     *CONFIG_FIELDS, *CLASSES, "order_selective",
 ]
+# Diagnostics of the background run, counted per population:
+# ``background_only`` fired for the background with no event at all;
+# ``quiet_sequence`` are the sequence detectors of the same population without
+# background; ``quiet_sequence_single`` are those of them that fire for one
+# event alone once the background is added -- the false responses to a single
+# event that the background rate is chosen to keep rare.
+BACKGROUND_FIELDS = ["background_only", "quiet_sequence", "quiet_sequence_single"]
+
+
+def fieldnames(steps_per_ms: int, background_rate: float) -> list[str]:
+    """CSV columns for a run.
+
+    The step and the background rate are written only when a run departs from
+    the reported model, so that the reported invocation still writes the
+    reported CSV byte for byte. Readers take a missing column as 1 step per ms
+    and no background.
+    """
+    names = list(FIELDNAMES)
+    if steps_per_ms != 1 or background_rate > 0:
+        names += ["steps_per_ms", "background_rate"]
+    if background_rate > 0:
+        names += BACKGROUND_FIELDS
+    return names
 
 
 def run_cell(job: dict) -> dict:
@@ -88,45 +131,68 @@ def run_cell(job: dict) -> dict:
         job: grid coordinates plus the fixed configuration.
 
     Returns:
-        A row dict matching :data:`FIELDNAMES`, with class counts and the count
+        A row dict matching :func:`fieldnames`, with class counts and the count
         of sequence detectors that are also silent to the reversed order.
     """
     rng = np.random.default_rng(job["seed"])
+    # Durations arrive in ms and are scaled to steps here, as in
+    # e6_precision.py. At one step per ms every factor is 1 and the reported
+    # model is untouched.
+    r = job["steps_per_ms"]
 
     stim = two_event_stimulus(
         rng,
         n_features=job["n_features"],
         n_per_event=job["n_per_event"],
-        onset1=job["onset1"],
-        interval=job["interval"],
-        spread=job["spread"],
-        n_time=job["n_time"],
+        onset1=job["onset1"] * r,
+        interval=job["interval"] * r,
+        spread=job["spread"] * r,
+        n_time=job["n_time"] * r,
     )
     delays, weights = random_connectivity(
         rng,
         n_neurons=job["n_neurons"],
         n_features=job["n_features"],
-        dispersion=job["dispersion"],
+        dispersion=job["dispersion"] * r,
         n_branches=job["n_branches"],
         p_connect=job["p_connect"],
     )
+    base = NeuronParams()
     params = NeuronParams(
         theta=job["theta"],
-        alpha=job["alpha"],
-        plateau_steps=job["plateau_steps"],
-        refractory=job["refractory"],
+        alpha=job["alpha"] / r,
+        tau_den=base.tau_den * r,
+        tau_mem=base.tau_mem * r,
+        plateau_steps=job["plateau_steps"] * r,
+        refractory=job["refractory"] * r,
         v_contrib=0.0,
     )
 
-    response_both = simulate_population(stim.both, delays, weights, params)
-    response_event1 = simulate_population(stim.event1_only, delays, weights, params)
-    response_event2 = simulate_population(stim.event2_only, delays, weights, params)
+    # Drawn after the stimulus and the wiring, so that a seed's population is
+    # the one the run without background classifies, and drawn once, so that
+    # all four stimuli carry the same background. The classification compares
+    # a neuron's responses across stimuli, and a fresh draw per stimulus would
+    # let a lucky background on the two-event trial alone pass for a sequence
+    # detector.
+    background = None
+    if job["background_rate"] > 0:
+        per_step = job["background_rate"] / (1000.0 * r)
+        background = (rng.random((stim.n_time, stim.n_features))
+                      < per_step).astype(float)
+
+    def respond(x, with_background=True):
+        if background is not None and with_background:
+            x = np.maximum(x, background)
+        return simulate_population(x, delays, weights, params)
+
+    response_both = respond(stim.both)
+    response_event1 = respond(stim.event1_only)
+    response_event2 = respond(stim.event2_only)
 
     # The order-reversed sequence: same features, same within-volley offsets,
     # only the order of the two volleys swapped, so nothing but temporal order
     # separates it from the target.
-    response_reversed = simulate_population(
-        stim.reversed_order().both, delays, weights, params)
+    response_reversed = respond(stim.reversed_order().both)
 
     counts = classify_detectors(response_both, response_event1, response_event2)
     is_sequence = sequence_mask(response_both, response_event1, response_event2)
@@ -137,7 +203,22 @@ def run_cell(job: dict) -> dict:
     row.update({k: job[k] for k in CONFIG_FIELDS})
     row.update(counts.as_dict())
     row["order_selective"] = order_selective
-    return row
+    row["steps_per_ms"] = r
+    row["background_rate"] = job["background_rate"]
+
+    if background is not None:
+        # The same population without background, to count what the background
+        # did to it: the detectors it turned into responders to a single event,
+        # and the neurons it drives with no event at all.
+        quiet = sequence_mask(respond(stim.both, False),
+                              respond(stim.event1_only, False),
+                              respond(stim.event2_only, False))
+        single = (response_event1 > 0) | (response_event2 > 0)
+        row["background_only"] = int((respond(np.zeros_like(stim.both)) > 0).sum())
+        row["quiet_sequence"] = int(quiet.sum())
+        row["quiet_sequence_single"] = int((quiet & single).sum())
+
+    return {k: row[k] for k in fieldnames(r, job["background_rate"])}
 
 
 def build_grid(args) -> list[dict]:
@@ -153,6 +234,8 @@ def build_grid(args) -> list[dict]:
         alpha=args.alpha,
         plateau_steps=args.plateau_steps,
         refractory=args.refractory,
+        steps_per_ms=args.steps_per_ms,
+        background_rate=args.background_rate,
     )
     grid = itertools.product(
         args.dispersions, args.thetas, args.intervals, args.p_connect,
@@ -185,8 +268,15 @@ def main(argv=None) -> int:
     parser.add_argument("--time-steps", type=int, default=60)
 
     parser.add_argument("--alpha", type=float, default=2.5)
-    parser.add_argument("--plateau-steps", type=int, default=15)
+    parser.add_argument("--plateau-steps", type=int, default=15,
+                        help="plateau length in ms")
     parser.add_argument("--refractory", type=int, default=2)
+    parser.add_argument("--steps-per-ms", type=int, default=1,
+                        help="simulation steps per millisecond (see the module "
+                             "docstring); the reported sweep uses 1")
+    parser.add_argument("--background-rate", type=float, default=0.0,
+                        help="Poisson background on every feature, in Hz; the "
+                             "reported sweep has none")
 
     parser.add_argument("--dispersions", type=int, nargs="+",
                         default=list(range(0, 31, 2)))
@@ -214,7 +304,9 @@ def main(argv=None) -> int:
     print(f"E1: {len(jobs)} cells "
           f"({len(args.dispersions)} dispersions x {len(args.thetas)} thetas x "
           f"{len(args.intervals)} intervals x {len(args.p_connect)} p x "
-          f"{args.seeds} seeds), {args.neurons} neurons, {n_workers} workers")
+          f"{args.seeds} seeds), {args.neurons} neurons, {n_workers} workers, "
+          f"{args.steps_per_ms} steps/ms, {args.plateau_steps} ms plateau, "
+          f"{args.background_rate:g} Hz background")
 
     started = time.time()
     if n_workers == 1:
@@ -226,7 +318,8 @@ def main(argv=None) -> int:
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDNAMES)
+        writer = csv.DictWriter(
+            handle, fieldnames=fieldnames(args.steps_per_ms, args.background_rate))
         writer.writeheader()
         writer.writerows(rows)
 
@@ -245,6 +338,18 @@ def main(argv=None) -> int:
         n_sel = sum(r["order_selective"] for r in rows if r["theta"] == theta)
         frac = f"{100.0 * n_sel / n_seq:.1f}%" if n_seq else "n/a"
         print(f"  theta {theta:>4}: order-selective {n_sel}/{n_seq} = {frac}")
+
+    if args.background_rate > 0:
+        for theta in sorted({r["theta"] for r in rows}):
+            sub = [r for r in rows if r["theta"] == theta]
+            n_quiet = sum(r["quiet_sequence"] for r in sub)
+            n_false = sum(r["quiet_sequence_single"] for r in sub)
+            frac = f"{100.0 * n_false / n_quiet:.1f}%" if n_quiet else "n/a"
+            alone = sum(r["background_only"] for r in sub) / (len(sub) * args.neurons)
+            print(f"  theta {theta:>4}: background alone drives "
+                  f"{100.0 * alone:.2f}% of neurons; of the sequence detectors "
+                  f"found without it, {n_false}/{n_quiet} = {frac} fire for "
+                  f"one event alone")
     return 0
 
 

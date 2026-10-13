@@ -184,6 +184,7 @@ def cutoffs(source, dispersions, rng, references=None):
 
 
 def main(argv=None) -> int:
+    global MIN_DETECTOR_TOTAL
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--csv", type=Path,
                         default=Path("results/e2_aliasing.csv"))
@@ -211,7 +212,12 @@ def main(argv=None) -> int:
     parser.add_argument("--width", default="plos")
     parser.add_argument("--height-mm", type=float, default=64.0)
     parser.add_argument("--panel-letters", nargs=3, default=["a", "b", "c"])
+    parser.add_argument("--min-detectors", type=int, default=MIN_DETECTOR_TOTAL,
+                        help="the detector floor below which a cell is not "
+                             "drawn; run_all.sh --quick lowers it, because the "
+                             "smoke-test grid never reaches the default")
     args = parser.parse_args(argv)
+    MIN_DETECTOR_TOTAL = args.min_detectors
 
     rows = load(args.csv)
     extra = [(p, load(p)) for p in args.csv_extra if p.exists()]
