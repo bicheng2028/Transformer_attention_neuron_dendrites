@@ -218,10 +218,9 @@ def main(argv=None) -> int:
         f"target present --- against Poisson noise density on the Q signal, at "
         f"$\\theta = {args.theta_main:g}$ ({n_matched:.1f} matched neurons per "
         f"pool on average). Detection is unaffected by noise at every density "
-        f"tested. False positives are not: {fp_txt}. The asymmetry is the "
-        f"result, and it locates the defence against false positives in the "
-        f"sparsity of Q rather than in the gate. \\textbf{{b}}, Where the match "
-        f"rate comes from. Measured match rate against threshold "
+        f"tested, while false positives rise with it: {fp_txt}. The defence "
+        f"against false positives therefore lies in the sparsity of Q. "
+        f"\\textbf{{b}}, Measured match rate against threshold "
         f"({match_txt} at $\\theta = {args.theta_main:g}$), against two "
         f"analytic baselines for independent uniform integer delays: the "
         f"probability that a pair compensates the target separation exactly "
@@ -232,7 +231,7 @@ def main(argv=None) -> int:
         f"{thetas[0]:g}$, ${thetas[1]:g}$ and ${thetas[2]:g}$). The measured "
         f"rate tracks the tolerance-widened baseline across two orders of "
         f"magnitude. The match rate is therefore what naive pairwise delay "
-        f"matching predicts, not something suppressed below it."
+        f"matching predicts."
     )
     caption_path = Path(args.out).with_suffix(".caption.tex")
     caption_path.write_text(caption + "\n")

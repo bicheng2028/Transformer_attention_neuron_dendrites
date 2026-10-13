@@ -4,7 +4,7 @@ Reads ``results/e6_convergence_r{1,4,10,20}.csv``: the precision sweep at 1, 4,
 10 and 20 steps per millisecond, on a reduced grid (theta 2.5, a 15 ms interval,
 dispersions 15, 20, 30 and 50 ms). It prints the retention the text quotes, and
 the half-loss jitter and tolerated absolute error that Fig 3f plots, computed
-exactly as ``make_fig_e6.py`` computes them. S2 Text quotes this table. It is
+exactly as ``make_fig_e6.py`` computes them. S1 Text quotes this table. It is
 the evidence that 10 steps per ms, the reported run's step, is converged, and
 that 1 step per ms is not.
 
