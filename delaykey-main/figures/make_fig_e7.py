@@ -200,7 +200,7 @@ def main(argv=None) -> int:
         f"rectified cosine with the neuron's stored template, measured over the "
         f"{n_det} neurons per population whose delays match the target "
         f"sequence. The two somatic rules are identical except in what sets "
-        # No \ref to the somatic equation: this figure now lives in S5 Text of
+        # No \ref to the somatic equation: this figure now lives in S4 Text of
         # the supplement, which is compiled as its own document, so a label
         # defined in content.tex resolves to nothing there.
         f"$I_\\mathrm{{inh}}$: a constant, giving exactly the weighted sum of "

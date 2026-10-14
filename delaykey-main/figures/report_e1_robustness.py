@@ -33,7 +33,7 @@ It prints, in order:
 5. The theory's slopes of Delta* and Delta_opt against the interval, fitted over
    the four simulated intervals as Fig 2c fits them.
 
-S2 Text quotes this output.
+S1 Text quotes this output.
 
 Usage::
 

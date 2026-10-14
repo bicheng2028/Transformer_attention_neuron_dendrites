@@ -40,10 +40,10 @@ the two afferents where they cross.
 0.3 m/s is the conduction velocity of thalamocortical axons between the white
 matter and L4, 0.31-0.33 m/s, measured along their radial course in mouse
 thalamocortical slices (Salami et al. 2003) -- the axons panel a draws, and the
-only measurement of them inside cortex. Two measured areas are overlaid
+only measurement of them inside cortex. Three measured areas are overlaid
 (MEASURED, below). The survey that chose them, with every other area in which
 both quantities have been measured, is reviews/column-areas-2026-10.md, and
-S8 Text carries its table. The velocity axis is swept only to give the relation
+S7 Text carries its table. The velocity axis is swept only to give the relation
 an extent.
 
 Usage::
@@ -85,13 +85,14 @@ D_MIN = V_AXON * TAU_MIN * 1e3    # 300 um
 D_MAX = V_AXON * TAU_MAX * 1e3    # 600 um
 
 # ---------------------------------------------------------------------------
-# The two areas overlaid on the relation. Each pairs a horizontal conduction
-# velocity that its source attributes to monosynaptic transmission with a
-# column defined by thalamic afferents, measured in the same species. These are
+# The three areas overlaid on the relation. Each pairs a horizontal conduction
+# velocity that its source attributes to monosynaptic transmission, reported as
+# a central value or as a range no wider than twofold, with a column defined by
+# thalamic afferents, measured in the same species. These are
 # literature values, not output of any experiment in this repository, so they
 # are written here with their sources rather than read from a CSV. The survey
 # behind the choice, and the areas it leaves out, are in
-# reviews/column-areas-2026-10.md and S8 Text.
+# reviews/column-areas-2026-10.md and S7 Text.
 #
 #   V1, macaque. Girard, Hupe & Bullier (2001) J Neurophysiol 85:1328, Results:
 #   from orthodromic activation, local connections have a median conduction
@@ -113,20 +114,35 @@ D_MAX = V_AXON * TAU_MAX * 1e3    # 600 um
 #   orientation (Judge & Jackson 2026, eNeuro) -- chords, so a lower bound --
 #   up to the ~300 um C2 diameter of Sofroniew et al. (2015, eLife).
 #
+#   Cat area 17. Luhmann, Greuel & Singer (1990) Eur J Neurosci 2:358, current
+#   source-density analysis of field potentials evoked by intracortical
+#   microstimulation in anaesthetised adult cats at 38 C, the LGN lesioned to
+#   exclude thalamocortical axons. Discussion: the supragranular pathway, which
+#   the abstract attributes to monosynaptic transmission, conducts "in the
+#   order of 0.3-0.6 m/s" (latency rising about 3 ms/mm, out to 2.5 mm); the
+#   layer IV pathway gives only an upper bound, 5 m/s, which the authors call
+#   an overestimate. No central value is reported. Column: half the 800-1000 um
+#   ocular dominance period of normal cats (Lowel 1994, J Neurosci 14:7451).
+#   Added on 2026-10-13 at the authors' decision, after the full text was read.
+#
 # v_pt is the statistic each source reports and is where the marker sits;
 # v_lo..v_hi is the spread the source gives around it, absent for V1. Neither
 # is the spread the mechanism is about -- of v across the afferents converging
 # on one column. d_lo..d_hi is the measured column range, and the marker sits
-# at its middle.
+# at its middle. v_pt = None marks a source that reports only a range: its
+# two ranges cross at their middles and no marker is placed.
 #
 # Labels are short because the panel is 43 x 23 mm at 8 pt: "monkey V1" and
 # "mouse barrel" cannot sit beside their bars without crossing a tau line, and
-# the caption names the species. lab_v, lab_d and lab_ha place each label in
-# data units, checked clear of both tau lines, the 0.3 m/s rule and its bar.
+# the caption names the species. lab_v, lab_d, lab_ha and lab_va place each
+# label in data units, checked clear of both tau lines, the 0.3 m/s rule, its
+# bar and the other data. The V1 label sits above the cat 17 velocity bar,
+# which crosses the V1 column bar.
 MEASURED = (
-    # label,   v_pt,  v_lo,  v_hi,  d_lo,  d_hi,  lab_v, lab_d, lab_ha
-    ("V1",     0.33,  0.33,  0.33,  395.0, 670.0, 0.346, 532.5, "left"),
-    ("barrel", 0.142, 0.066, 0.218, 124.0, 300.0, 0.008, 442.0, "left"),
+    # label,   v_pt,  v_lo,  v_hi,  d_lo,  d_hi,  lab_v, lab_d, lab_ha,   lab_va
+    ("V1",     0.33,  0.33,  0.33,  395.0, 670.0, 0.346, 600.0, "left",   "center"),
+    ("barrel", 0.142, 0.066, 0.218, 124.0, 300.0, 0.008, 442.0, "left",   "center"),
+    ("cat 17", None,  0.30,  0.60,  400.0, 500.0, 0.47,  372.0, "center", "top"),
 )
 
 # ---------------------------------------------------------------------------
@@ -340,8 +356,11 @@ def draw_sheet(ax) -> None:
         halo(ax, centre, L4_Y1 - 1.4, name, color=colour, rings=6)
 
     note(ax, SHEET_X0 + 1.5, L4_Y1 - 0.6, "L4", color=C["rule"], va="top")
-    note(ax, SHEET_X1 - 1.0, WM_Y0 + 0.3, "white matter (myelinated)",
-         color=C["rule"], ha="right", va="bottom")
+    # Top of the band: H2's sheathed course runs along the band's lower half
+    # for its whole width, so a label at the bottom sat under the sheath. It
+    # ends short of column B, whose d_column bracket hangs just above the band.
+    note(ax, COL_B_C - COL_W / 2.0 - 4.0, WM_Y1 - 0.6,
+         "white matter (myelinated)", color=C["rule"], ha="right", va="top")
 
 
 def draw_afferent(ax, wm_points, l4_points, seed: int, zorder: float,
@@ -500,9 +519,9 @@ def draw_prediction(fig, canvas_ax) -> None:
 
     The 1-2 ms window bounds the band, the thalamocortical velocity measured
     inside cortex (0.3 m/s) is marked, and the 300-600 um it implies is the bar.
-    The velocity axis is swept to give the product an extent, and the two areas
+    The velocity axis is swept to give the product an extent, and the three areas
     in MEASURED are overlaid on it, each as its measured column range against
-    its measured velocity.
+    its measured velocity, with no marker where the velocity is a range only.
     """
     ax = axes_mm(fig, PB_X, PB_Y, PB_W, PB_H)
     colour = PALETTE["purple"]
@@ -513,12 +532,14 @@ def draw_prediction(fig, canvas_ax) -> None:
                     linewidth=0, zorder=1)
     for edge in (upper, lower):
         ax.plot(v, edge, color=colour, lw=0.8, zorder=2)
-    # Both bounds are labelled at the right, where the wedge is widest: a label
-    # anywhere else is crossed by one of the two diverging lines.
-    ax.text(V_MAX * 0.99, 980.0, f"$\\tau$ = {TAU_MAX:g} ms", color=colour,
+    # Both bounds are labelled at the right, where the wedge is widest, inside
+    # the band: tau = 2 ms under the upper line and tau = 1 ms over the lower.
+    # Below the lower line, tau = 1 ms collided with the right end of the
+    # cat 17 velocity range, which stops at 0.6 m/s a glyph's height under it.
+    ax.text(V_MAX * 1.03, 1150.0, f"$\\tau$ = {TAU_MAX:g} ms", color=colour,
             fontsize=PT_ANNOT, ha="right", va="top", zorder=5)
-    ax.text(V_MAX * 0.99, 620.0, f"$\\tau$ = {TAU_MIN:g} ms", color=colour,
-            fontsize=PT_ANNOT, ha="right", va="top", zorder=5)
+    ax.text(V_MAX * 1.03, 785.0, f"$\\tau$ = {TAU_MIN:g} ms", color=colour,
+            fontsize=PT_ANNOT, ha="right", va="bottom", zorder=5)
 
     # The thalamocortical velocity measured inside cortex, and the diameter it
     # implies.
@@ -538,16 +559,23 @@ def draw_prediction(fig, canvas_ax) -> None:
     # The two measured areas. Each is drawn as its column range against its
     # measured v, so the reader sees the datum as an interval and not as a point
     # estimate it is not; the marker sits at the reported velocity statistic.
-    for name, v_m, v_lo, v_hi, d_lo, d_hi, lab_v, lab_d, lab_ha in MEASURED:
+    for (name, v_m, v_lo, v_hi, d_lo, d_hi,
+         lab_v, lab_d, lab_ha, lab_va) in MEASURED:
+        note(ax, lab_v, lab_d, name, color=C["ink"], ha=lab_ha, va=lab_va)
         d_m = 0.5 * (d_lo + d_hi)
+        # A source that reports only a range is drawn like the others, with
+        # its two ranges crossing at their middles, but with no marker: a dot
+        # would claim a central value the source does not give.
+        v_x = v_m if v_m is not None else 0.5 * (v_lo + v_hi)
         # the column range, vertically
-        ax.plot([v_m, v_m], [d_lo, d_hi], color=C["ink"], lw=1.1,
+        ax.plot([v_x, v_x], [d_lo, d_hi], color=C["ink"], lw=1.1,
                 solid_capstyle="butt", zorder=6)
         for d in (d_lo, d_hi):
-            ax.plot([v_m - 0.007, v_m + 0.007], [d, d], color=C["ink"],
+            ax.plot([v_x - 0.007, v_x + 0.007], [d, d], color=C["ink"],
                     lw=0.8, zorder=6)
-        ax.plot([v_m], [d_m], marker="o", markersize=2.4, color=C["ink"],
-                linestyle="none", zorder=7)
+        if v_m is not None:
+            ax.plot([v_m], [d_m], marker="o", markersize=2.4, color=C["ink"],
+                    linestyle="none", zorder=7)
         # The velocity spread, horizontally, where the source reports one.
         if v_hi > v_lo:
             ax.plot([v_lo, v_hi], [d_m, d_m], color=C["ink"], lw=0.6,
@@ -555,7 +583,6 @@ def draw_prediction(fig, canvas_ax) -> None:
             for v in (v_lo, v_hi):
                 ax.plot([v, v], [d_m - 18.0, d_m + 18.0], color=C["ink"],
                         lw=0.6, zorder=5)
-        note(ax, lab_v, lab_d, name, color=C["ink"], ha=lab_ha, va="center")
 
     ax.set_xlim(0.0, V_MAX * 1.03)
     ax.set_ylim(0.0, 1350.0)
@@ -701,7 +728,7 @@ def build(out_stem, formats, geometry: bool = False):
 def caption(geometry: bool = False) -> str:
     """The replacement caption, with bold panel letters."""
     geom = (
-        f"\\textbf{{b}}, Why the construction fixes a column's shape as well as "
+        f"\\textbf{{b}}, The construction fixes a column's shape as well as "
         f"its size. A tangential view of L4, looking down on the sheet that "
         f"\\textbf{{a}} cuts through from the side. Each afferent's "
         f"iso-arrival-time contours (dashed) run perpendicular to it and are "
@@ -748,8 +775,7 @@ def caption(geometry: bool = False) -> str:
         f"column~B, and the later spike at the more proximal column~A, both "
         f"inside one coincidence window $\\tau$ (shaded). Neighbouring columns "
         f"therefore read out different firing latencies of the same LGN "
-        f"neuron, and the arrangement of columns is continuous rather than "
-        f"discrete. "
+        f"neuron, and the arrangement of columns is continuous. "
         f"{geom}"
         f"\\textbf{{{plot_letter}}}, The diameter that follows, Eq.~\\ref{{eq:column_diameter}}: "
         f"predicted column diameter against conduction velocity, banded over "
@@ -757,7 +783,7 @@ def caption(geometry: bool = False) -> str:
         f"impose ($\\tau = {TAU_MIN:g}$--{TAU_MAX:g}~ms). At "
         f"$v \\approx {V_AXON:g}$~m/s (dashed line), the speed measured for "
         f"thalamocortical axons between the white matter and L4, the relation "
-        f"gives {D_MIN:.0f}--{D_MAX:.0f}~$\\mu$m (bar). Overlaid are the two "
+        f"gives {D_MIN:.0f}--{D_MAX:.0f}~$\\mu$m (bar). Overlaid are the three "
         f"areas that pair a horizontal velocity attributed to monosynaptic "
         f"transmission with a column defined by thalamic afferents. V1, "
         f"monkey: the median of orthodromic single-unit speeds, 0.33~m/s (no "
@@ -766,10 +792,14 @@ def caption(geometry: bool = False) -> str:
         f"voltage responses of parvalbumin interneurons in slices, "
         f"$142~\\mu$m/ms, bar $\\pm 1$~SD across slices, against barrels from "
         f"124~$\\mu$m, an in-slice width and so a lower bound, to about "
-        f"300~$\\mu$m. Velocity bars show the variation each study reports, "
-        f"not the spread across one column's afferents. Sources, and the other "
+        f"300~$\\mu$m. Cat 17: the 0.3--0.6~m/s of the supragranular "
+        f"pathway, recorded in vivo, against ocular dominance columns "
+        f"400--500~$\\mu$m wide, half their period; no central value is "
+        f"reported, so the two ranges cross at their middles without a marker. "
+        f"Velocity bars show the variation each study reports across its "
+        f"recordings or slices. Sources, and the other "
         f"areas in which both quantities have been measured, are in "
-        f"\\textbf{{S8 Text}}."
+        f"\\textbf{{S7 Text}}."
     )
 
 
